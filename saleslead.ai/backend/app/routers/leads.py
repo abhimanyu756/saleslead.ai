@@ -3,15 +3,39 @@
 import csv
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import Lead
 from app.schemas import LeadCreate, LeadOut
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+async def _trigger_outbound_call(phone: str, lead_id: str, lead_name: str, language: str):
+    """Fire an ElevenLabs outbound call for a lead. Silently skips if phone number not configured."""
+    if not settings.ELEVENLABS_PHONE_NUMBER_ID:
+        return
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        await client.post(
+            "https://api.elevenlabs.io/v1/convai/conversations/outbound_call",
+            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+            json={
+                "agent_id": settings.ELEVENLABS_AGENT_ID,
+                "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
+                "customer_phone_number": phone,
+                "metadata": {
+                    "lead_id": lead_id,
+                    "lead_name": lead_name,
+                    "language": language,
+                },
+            },
+        )
 
 
 @router.get("/", response_model=list[LeadOut])
@@ -33,11 +57,17 @@ async def create_lead(body: LeadCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/upload-csv", response_model=dict, status_code=201)
-async def upload_csv(file: UploadFile, db: AsyncSession = Depends(get_db)):
+async def upload_csv(
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     content = await file.read()
     reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
 
     created, skipped = 0, 0
+    new_leads: list[Lead] = []
+
     for row in reader:
         phone = row.get("phone", "").strip()
         if not phone:
@@ -55,9 +85,22 @@ async def upload_csv(file: UploadFile, db: AsyncSession = Depends(get_db)):
             broker_affiliation=row.get("broker_affiliation", "").strip() or None,
         )
         db.add(lead)
+        new_leads.append(lead)
         created += 1
 
     await db.commit()
+
+    # Refresh all new leads to get their generated IDs, then trigger outbound calls
+    for lead in new_leads:
+        await db.refresh(lead)
+        background_tasks.add_task(
+            _trigger_outbound_call,
+            lead.phone,
+            str(lead.id),
+            lead.name,
+            lead.language_pref,
+        )
+
     return {"created": created, "skipped": skipped}
 
 

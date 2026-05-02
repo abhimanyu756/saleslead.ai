@@ -1,12 +1,9 @@
 "use client";
 
-import { MOCK_LEADS } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import { api, Call } from "@/lib/api";
 import Link from "next/link";
-import { PhoneCall, Clock } from "lucide-react";
-
-const ALL_CALLS = MOCK_LEADS.flatMap((l) =>
-  l.calls.map((c) => ({ ...c, lead_name: l.name, lead_phone: l.phone, lead_language: l.language_pref }))
-).sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+import { Clock, PhoneCall } from "lucide-react";
 
 function classificationBadge(c: string) {
   if (c === "Hot") return "bg-amber-100 text-amber-700";
@@ -15,11 +12,21 @@ function classificationBadge(c: string) {
 }
 
 export default function CallsPage() {
+  const [calls, setCalls] = useState<Call[]>([]);
+
+  useEffect(() => {
+    api.getCalls().then(setCalls).catch(console.error);
+  }, []);
+
   return (
     <div className="p-6 space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">All Calls</h1>
-        <p className="text-sm text-slate-500">{ALL_CALLS.length} calls recorded</p>
+        <div className="flex items-center gap-2">
+          <PhoneCall size={18} className="text-slate-500" />
+          <h1 className="text-xl font-bold text-slate-900">All Calls</h1>
+          <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{calls.length} calls</span>
+        </div>
+        <p className="text-sm text-slate-500 mt-0.5">All processed calls with scores</p>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
@@ -38,9 +45,9 @@ export default function CallsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {ALL_CALLS.map((call) => (
+            {calls.map((call) => (
               <tr key={call.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-900">{call.lead_name}</td>
+                <td className="px-4 py-3 font-medium text-slate-900">{call.lead_id}</td>
                 <td className="px-4 py-3 text-slate-500">{call.language_used}</td>
                 <td className="px-4 py-3 text-slate-500 flex items-center gap-1">
                   <Clock size={12} className="text-slate-400" />
@@ -51,19 +58,24 @@ export default function CallsPage() {
                     {call.classification}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-slate-700 font-semibold">{call.score.interest_score}/10</td>
-                <td className="px-4 py-3 text-slate-700 font-semibold">{call.score.readiness_score}/10</td>
+                <td className="px-4 py-3 text-slate-700 font-semibold">{call.score?.interest_score ?? "—"}/10</td>
+                <td className="px-4 py-3 text-slate-700 font-semibold">{call.score?.readiness_score ?? "—"}/10</td>
                 <td className="px-4 py-3 text-slate-500">{call.objections.length}</td>
                 <td className="px-4 py-3 text-slate-400 text-xs">
                   {new Date(call.started_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </td>
                 <td className="px-4 py-3">
-                  <Link href={`/calls/${call.id}`} className="text-xs text-indigo-600 hover:underline">
-                    View
-                  </Link>
+                  <Link href={`/calls/${call.id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
                 </td>
               </tr>
             ))}
+            {calls.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-400">
+                  No calls yet. Complete a voice call to see data here.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

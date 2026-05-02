@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Script from "next/script";
 import { Mic, MicOff, Phone, PhoneOff, Volume2, Zap, Globe, CheckCircle, Send, ExternalLink, UserCheck } from "lucide-react";
 
 type CallState = "idle" | "connecting" | "active" | "ended";
+
+const AGENT_ID = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID ?? "";
 
 const DEMO_LEADS = [
   {
@@ -105,6 +108,7 @@ const CLASSIFICATION_COLORS: Record<string, string> = {
 };
 
 export default function VoicePage() {
+  const [tab, setTab] = useState<"live" | "demo">("live");
   const [callState, setCallState] = useState<CallState>("idle");
   const [selectedLead, setSelectedLead] = useState(0);
   const [muted, setMuted] = useState(false);
@@ -130,7 +134,6 @@ export default function VoicePage() {
     return () => clearInterval(interval);
   }, [callState]);
 
-  // Language detection animation
   useEffect(() => {
     if (callState !== "active") return;
     if (langStep >= langSteps.length - 1) return;
@@ -138,7 +141,6 @@ export default function VoicePage() {
     return () => clearTimeout(timeout);
   }, [callState, langStep, langSteps.length]);
 
-  // Transcript replay
   useEffect(() => {
     if (callState !== "active") return;
     if (lineIndex >= lines.length) return;
@@ -155,7 +157,6 @@ export default function VoicePage() {
     return () => clearTimeout(timeout);
   }, [callState, lineIndex, lines]);
 
-  // Auto-scroll transcript
   useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
@@ -188,169 +189,57 @@ export default function VoicePage() {
 
   return (
     <div className="p-6 space-y-5">
+      <Script src="https://unpkg.com/@elevenlabs/convai-widget-embed" strategy="afterInteractive" />
+
       <div>
         <h1 className="text-xl font-bold text-slate-900">Voice Demo</h1>
-        <p className="text-sm text-slate-500">Simulate a live agent call — ElevenLabs + Claude Sonnet 4.6 in production</p>
+        <p className="text-sm text-slate-500">Live AI voice agent — ElevenLabs + Gemini</p>
       </div>
 
-      <div className="grid grid-cols-5 gap-5">
-        {/* Left panel */}
-        <div className="col-span-2 space-y-4">
-          {/* Lead selector */}
-          <div className="bg-white rounded-xl border border-slate-100 p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Select Demo Lead</p>
-            <div className="space-y-2">
-              {DEMO_LEADS.map((l, i) => (
-                <button
-                  key={i}
-                  disabled={callState === "active" || callState === "connecting"}
-                  onClick={() => setSelectedLead(i)}
-                  className={`w-full text-left p-3 rounded-lg border text-sm transition-colors ${
-                    selectedLead === i
-                      ? "border-indigo-300 bg-indigo-50"
-                      : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
-                  } disabled:opacity-40 disabled:cursor-not-allowed`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-slate-900">{l.name}</p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${CLASSIFICATION_COLORS[l.classification]}`}>
-                      {l.classification}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">{l.language} · {l.description}</p>
-                </button>
-              ))}
+      {/* Tab switcher */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+        <button
+          onClick={() => setTab("live")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "live" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+        >
+          Live Call
+        </button>
+        <button
+          onClick={() => setTab("demo")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === "demo" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+        >
+          Demo Simulation
+        </button>
+      </div>
+
+      {/* Live Call tab — real ElevenLabs widget */}
+      {tab === "live" && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-slate-100 p-6 text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center mx-auto">
+              <Mic size={24} className="text-indigo-500" />
             </div>
-          </div>
-
-          {/* Call control */}
-          <div className="bg-white rounded-xl border border-slate-100 p-5 text-center">
-            {/* Waveform */}
-            <div className="flex items-center justify-center gap-1 h-12 mb-3">
-              {callState === "active" && agentSpeaking ? (
-                Array.from({ length: 9 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1.5 bg-indigo-500 rounded-full animate-bounce"
-                    style={{ height: `${10 + (i % 3) * 10}px`, animationDelay: `${i * 70}ms` }}
-                  />
-                ))
-              ) : callState === "active" ? (
-                Array.from({ length: 9 }).map((_, i) => (
-                  <div key={i} className="w-1.5 bg-slate-200 rounded-full" style={{ height: "6px" }} />
-                ))
-              ) : callState === "connecting" ? (
-                <div className="w-8 h-8 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-                  <Mic size={20} className="text-slate-400" />
-                </div>
-              )}
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Start a Live AI Sales Call</h2>
+              <p className="text-sm text-slate-500 mt-1">Click the button below — allow microphone access and speak to the agent in Hindi, English, or Hinglish.</p>
             </div>
-
-            <p className="text-xs font-medium text-slate-500 mb-1">
-              {callState === "idle" && "Ready to call"}
-              {callState === "connecting" && `Connecting to ${lead.name}…`}
-              {callState === "active" && (agentSpeaking ? "Agent speaking" : "Listening…")}
-              {callState === "ended" && "Call ended"}
-            </p>
-            {callState === "active" && (
-              <p className="text-2xl font-mono font-bold text-slate-900">{formatDuration(callDuration)}</p>
-            )}
-
-            {/* Language detection */}
-            {(callState === "active" || callState === "ended") && (
-              <div className="mt-3 flex items-center justify-center gap-2">
-                <Globe size={12} className="text-slate-400" />
-                <span className={`text-xs font-medium transition-colors ${currentLang.confidence >= 90 ? "text-emerald-600" : "text-slate-500"}`}>
-                  {currentLang.detected}
-                </span>
-                {currentLang.confidence > 0 && (
-                  <span className="text-[10px] text-slate-400">{currentLang.confidence}% confidence</span>
-                )}
+            {/* ElevenLabs widget */}
+            {AGENT_ID ? (
+              // @ts-ignore — custom web component
+              <elevenlabs-convai agent-id={AGENT_ID} />
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-700">
+                Add <code className="font-mono text-xs bg-amber-100 px-1 rounded">NEXT_PUBLIC_ELEVENLABS_AGENT_ID</code> to your <code className="font-mono text-xs bg-amber-100 px-1 rounded">.env.local</code> to enable live calls.
               </div>
             )}
-
-            {/* Buttons */}
-            <div className="flex justify-center gap-3 mt-4">
-              {callState === "active" && (
-                <>
-                  <button
-                    onClick={() => setMuted(!muted)}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${
-                      muted ? "bg-red-50 border-red-200 text-red-500" : "bg-slate-50 border-slate-200 text-slate-600"
-                    }`}
-                  >
-                    {muted ? <MicOff size={16} /> : <Mic size={16} />}
-                  </button>
-                  <button className="w-10 h-10 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center">
-                    <Volume2 size={16} />
-                  </button>
-                </>
-              )}
-              {(callState === "idle" || callState === "ended") && (
-                <button
-                  onClick={startCall}
-                  className="flex items-center gap-2 bg-emerald-500 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-emerald-600 transition-colors"
-                >
-                  <Phone size={15} />
-                  {callState === "ended" ? "New Call" : "Start Call"}
-                </button>
-              )}
-              {callState === "connecting" && (
-                <button onClick={() => setCallState("idle")} className="bg-slate-200 text-slate-600 px-5 py-2.5 rounded-full text-sm font-medium">
-                  Cancel
-                </button>
-              )}
-              {callState === "active" && (
-                <button
-                  onClick={endCall}
-                  className="flex items-center gap-2 bg-red-500 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-red-600 transition-colors"
-                >
-                  <PhoneOff size={15} /> End Call
-                </button>
-              )}
-            </div>
           </div>
-
-          {/* Live call stats */}
-          {(callState === "active" || callState === "ended") && (
-            <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-3">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Live Stats</p>
-              <div>
-                <p className="text-[10px] text-slate-400 mb-1.5">Benefits Pitched</p>
-                {["Zero joining fee", "100% brokerage share", "Daily payouts"].map((b) => {
-                  const covered = benefitsPitched.some((p) => p.includes(b.split(" ")[0]));
-                  return (
-                    <div key={b} className={`flex items-center gap-2 text-xs mb-1 ${covered ? "text-emerald-700" : "text-slate-400"}`}>
-                      <CheckCircle size={11} className={covered ? "text-emerald-500" : "text-slate-200"} />
-                      {b}
-                    </div>
-                  );
-                })}
-              </div>
-              <div>
-                <p className="text-[10px] text-slate-400 mb-1.5">Objections Handled</p>
-                {objectionsRaised.length === 0 ? (
-                  <p className="text-xs text-slate-400">None yet</p>
-                ) : (
-                  objectionsRaised.map((o, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs text-amber-700 mb-1">
-                      <CheckCircle size={11} className="text-amber-500 shrink-0" />
-                      <span className="truncate">{o}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Stack info */}
           <div className="bg-slate-900 rounded-xl p-4 space-y-2">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Production Stack</p>
             {[
               { label: "Voice", value: "ElevenLabs Conv AI" },
-              { label: "LLM", value: "Claude Sonnet 4.6" },
+              { label: "LLM", value: "Gemini 2.5 Flash" },
               { label: "STT", value: "ElevenLabs Scribe" },
               { label: "Regional", value: "Sarvam AI (Bulbul)" },
               { label: "Latency", value: "<400ms / turn" },
@@ -362,126 +251,265 @@ export default function VoicePage() {
             ))}
           </div>
         </div>
+      )}
 
-        {/* Right panel — transcript + post-call */}
-        <div className="col-span-3 flex flex-col gap-4">
-          {/* Transcript */}
-          <div className="bg-white rounded-xl border border-slate-100 flex flex-col flex-1">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900">Live Transcript</h2>
-              {callState === "active" && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Live
-                </span>
-              )}
+      {/* Demo Simulation tab */}
+      {tab === "demo" && (
+        <div className="grid grid-cols-5 gap-5">
+          <div className="col-span-2 space-y-4">
+            <div className="bg-white rounded-xl border border-slate-100 p-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Select Demo Lead</p>
+              <div className="space-y-2">
+                {DEMO_LEADS.map((l, i) => (
+                  <button
+                    key={i}
+                    disabled={callState === "active" || callState === "connecting"}
+                    onClick={() => setSelectedLead(i)}
+                    className={`w-full text-left p-3 rounded-lg border text-sm transition-colors ${
+                      selectedLead === i ? "border-indigo-300 bg-indigo-50" : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-slate-900">{l.name}</p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${CLASSIFICATION_COLORS[l.classification]}`}>
+                        {l.classification}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">{l.language} · {l.description}</p>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div ref={transcriptRef} className="flex-1 p-5 overflow-y-auto space-y-3 min-h-[300px] max-h-[380px]">
-              {callState === "idle" && (
-                <div className="h-full flex flex-col items-center justify-center text-center py-10">
-                  <div className="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center mb-3">
-                    <Zap size={22} className="text-indigo-400" />
+            <div className="bg-white rounded-xl border border-slate-100 p-5 text-center">
+              <div className="flex items-center justify-center gap-1 h-12 mb-3">
+                {callState === "active" && agentSpeaking ? (
+                  Array.from({ length: 9 }).map((_, i) => (
+                    <div key={i} className="w-1.5 bg-indigo-500 rounded-full animate-bounce"
+                      style={{ height: `${10 + (i % 3) * 10}px`, animationDelay: `${i * 70}ms` }} />
+                  ))
+                ) : callState === "active" ? (
+                  Array.from({ length: 9 }).map((_, i) => (
+                    <div key={i} className="w-1.5 bg-slate-200 rounded-full" style={{ height: "6px" }} />
+                  ))
+                ) : callState === "connecting" ? (
+                  <div className="w-8 h-8 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
+                    <Mic size={20} className="text-slate-400" />
                   </div>
-                  <p className="text-sm font-medium text-slate-600">Select a lead and start the call</p>
-                  <p className="text-xs text-slate-400 mt-1">The AI opens in the lead's language and adapts in real-time</p>
+                )}
+              </div>
+
+              <p className="text-xs font-medium text-slate-500 mb-1">
+                {callState === "idle" && "Ready to call"}
+                {callState === "connecting" && `Connecting to ${lead.name}…`}
+                {callState === "active" && (agentSpeaking ? "Agent speaking" : "Listening…")}
+                {callState === "ended" && "Call ended"}
+              </p>
+              {callState === "active" && (
+                <p className="text-2xl font-mono font-bold text-slate-900">{formatDuration(callDuration)}</p>
+              )}
+
+              {(callState === "active" || callState === "ended") && (
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <Globe size={12} className="text-slate-400" />
+                  <span className={`text-xs font-medium transition-colors ${currentLang.confidence >= 90 ? "text-emerald-600" : "text-slate-500"}`}>
+                    {currentLang.detected}
+                  </span>
+                  {currentLang.confidence > 0 && (
+                    <span className="text-[10px] text-slate-400">{currentLang.confidence}% confidence</span>
+                  )}
                 </div>
               )}
-              {callState === "connecting" && (
-                <div className="h-full flex items-center justify-center py-10">
-                  <p className="text-sm text-slate-400 animate-pulse">Connecting to {lead.name}…</p>
+
+              <div className="flex justify-center gap-3 mt-4">
+                {callState === "active" && (
+                  <>
+                    <button onClick={() => setMuted(!muted)}
+                      className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${muted ? "bg-red-50 border-red-200 text-red-500" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
+                      {muted ? <MicOff size={16} /> : <Mic size={16} />}
+                    </button>
+                    <button className="w-10 h-10 rounded-full border border-slate-200 bg-slate-50 text-slate-600 flex items-center justify-center">
+                      <Volume2 size={16} />
+                    </button>
+                  </>
+                )}
+                {(callState === "idle" || callState === "ended") && (
+                  <button onClick={startCall}
+                    className="flex items-center gap-2 bg-emerald-500 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-emerald-600 transition-colors">
+                    <Phone size={15} />
+                    {callState === "ended" ? "New Call" : "Start Call"}
+                  </button>
+                )}
+                {callState === "connecting" && (
+                  <button onClick={() => setCallState("idle")} className="bg-slate-200 text-slate-600 px-5 py-2.5 rounded-full text-sm font-medium">Cancel</button>
+                )}
+                {callState === "active" && (
+                  <button onClick={endCall}
+                    className="flex items-center gap-2 bg-red-500 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-red-600 transition-colors">
+                    <PhoneOff size={15} /> End Call
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {(callState === "active" || callState === "ended") && (
+              <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Live Stats</p>
+                <div>
+                  <p className="text-[10px] text-slate-400 mb-1.5">Benefits Pitched</p>
+                  {["Zero joining fee", "100% brokerage share", "Daily payouts"].map((b) => {
+                    const covered = benefitsPitched.some((p) => p.includes(b.split(" ")[0]));
+                    return (
+                      <div key={b} className={`flex items-center gap-2 text-xs mb-1 ${covered ? "text-emerald-700" : "text-slate-400"}`}>
+                        <CheckCircle size={11} className={covered ? "text-emerald-500" : "text-slate-200"} />
+                        {b}
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-              {(callState === "active" || callState === "ended") && transcriptLines.map((line, i) => (
-                <div key={i} className={`flex gap-3 ${line.speaker === "lead" ? "flex-row-reverse" : ""}`}>
-                  <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5 ${
-                    line.speaker === "agent" ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-600"
-                  }`}>
-                    {line.speaker === "agent" ? "AI" : lead.name[0]}
-                  </div>
-                  <div className={`max-w-[80%] space-y-0.5 ${line.speaker === "lead" ? "flex flex-col items-end" : ""}`}>
-                    <p className={`text-[10px] font-medium ${line.speaker === "agent" ? "text-indigo-400" : "text-slate-400"}`}>
-                      {line.speaker === "agent" ? "AI Agent" : lead.name}
-                    </p>
-                    <div className={`text-sm px-3 py-2 rounded-xl leading-relaxed ${
-                      line.speaker === "agent" ? "bg-indigo-50 text-slate-800" : "bg-slate-100 text-slate-800"
-                    }`}>
-                      {line.text}
-                    </div>
-                    {line.objection && (
-                      <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">
-                        Objection: {line.objection}
-                      </span>
-                    )}
-                    {line.benefit && (
-                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">
-                        ✓ Pitched: {line.benefit}
-                      </span>
-                    )}
-                  </div>
+                <div>
+                  <p className="text-[10px] text-slate-400 mb-1.5">Objections Handled</p>
+                  {objectionsRaised.length === 0 ? (
+                    <p className="text-xs text-slate-400">None yet</p>
+                  ) : (
+                    objectionsRaised.map((o, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-amber-700 mb-1">
+                        <CheckCircle size={11} className="text-amber-500 shrink-0" />
+                        <span className="truncate">{o}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-900 rounded-xl p-4 space-y-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Production Stack</p>
+              {[
+                { label: "Voice", value: "ElevenLabs Conv AI" },
+                { label: "LLM", value: "Gemini 2.5 Flash" },
+                { label: "STT", value: "ElevenLabs Scribe" },
+                { label: "Regional", value: "Sarvam AI (Bulbul)" },
+                { label: "Latency", value: "<400ms / turn" },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between text-xs">
+                  <span className="text-slate-500">{label}</span>
+                  <span className="text-slate-300 font-medium">{value}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Post-call outcome — shown after call ends */}
-          {callState === "ended" && (
-            <div className={`rounded-xl border p-5 space-y-4 ${cta.cls}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CtaIcon size={18} className="text-slate-700" />
-                  <h3 className="text-sm font-bold text-slate-900">Call Outcome: {cta.label}</h3>
-                </div>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${CLASSIFICATION_COLORS[lead.classification]}`}>
-                  {lead.classification}
-                </span>
+          <div className="col-span-3 flex flex-col gap-4">
+            <div className="bg-white rounded-xl border border-slate-100 flex flex-col flex-1">
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-900">Live Transcript</h2>
+                {callState === "active" && (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> Live
+                  </span>
+                )}
               </div>
 
-              <p className="text-sm text-slate-700">{cta.detail}</p>
-
-              {/* CTA action */}
-              {lead.expectedCTA === "rm_scheduled" && (
-                <div className="bg-white rounded-lg border border-amber-200 px-4 py-3">
-                  <p className="text-xs font-semibold text-amber-700 mb-1">RM Handoff Brief Generated</p>
-                  <p className="text-xs text-slate-600">Interest: 8/10 · Readiness: 7/10 · Network: Medium (~80 clients)</p>
-                  <p className="text-xs text-slate-500 mt-1 italic">Opening: "Rajesh ji, Zerodha se alag kya milega — main clearly batata hoon."</p>
-                </div>
-              )}
-
-              {lead.expectedCTA === "whatsapp_sent" && (
-                <div className="bg-[#e9fbe8] rounded-lg border border-[#c3f0c0] p-3">
-                  <p className="text-xs font-semibold text-emerald-700 mb-1">WhatsApp Sent</p>
-                  <p className="text-xs text-slate-700">
-                    Hi {lead.name}! Thanks for the chat today. Here's your sign-up link for Rupeezy's AP program — zero joining fee, 100% brokerage, daily payouts.
-                  </p>
-                  <div className="mt-2">
-                    <a
-                      href="#"
-                      className="flex items-center gap-1.5 text-xs text-indigo-600 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg font-medium w-fit"
-                    >
-                      <ExternalLink size={10} /> rupeezy.in/partner/signup
-                    </a>
+              <div ref={transcriptRef} className="flex-1 p-5 overflow-y-auto space-y-3 min-h-[300px] max-h-[380px]">
+                {callState === "idle" && (
+                  <div className="h-full flex flex-col items-center justify-center text-center py-10">
+                    <div className="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center mb-3">
+                      <Zap size={22} className="text-indigo-400" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-600">Select a lead and start the call</p>
+                    <p className="text-xs text-slate-400 mt-1">The AI opens in the lead's language and adapts in real-time</p>
                   </div>
-                </div>
-              )}
-
-              {lead.expectedCTA === "no_action" && (
-                <div className="bg-white rounded-lg border border-slate-200 px-4 py-3">
-                  <p className="text-xs font-semibold text-slate-600 mb-1">Re-engagement Scheduled</p>
-                  <p className="text-xs text-slate-500">Next contact: ~60 days · Reason: satisfied with current broker</p>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 pt-1 text-xs text-slate-500">
-                <span>Duration: {formatDuration(callDuration)}</span>
-                <span>·</span>
-                <span>Language: {lead.language}</span>
-                <span>·</span>
-                <span>Benefits pitched: {benefitsPitched.length > 0 ? benefitsPitched.join(", ") : "Partial"}</span>
+                )}
+                {callState === "connecting" && (
+                  <div className="h-full flex items-center justify-center py-10">
+                    <p className="text-sm text-slate-400 animate-pulse">Connecting to {lead.name}…</p>
+                  </div>
+                )}
+                {(callState === "active" || callState === "ended") && transcriptLines.map((line, i) => (
+                  <div key={i} className={`flex gap-3 ${line.speaker === "lead" ? "flex-row-reverse" : ""}`}>
+                    <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5 ${
+                      line.speaker === "agent" ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {line.speaker === "agent" ? "AI" : lead.name[0]}
+                    </div>
+                    <div className={`max-w-[80%] space-y-0.5 ${line.speaker === "lead" ? "flex flex-col items-end" : ""}`}>
+                      <p className={`text-[10px] font-medium ${line.speaker === "agent" ? "text-indigo-400" : "text-slate-400"}`}>
+                        {line.speaker === "agent" ? "AI Agent" : lead.name}
+                      </p>
+                      <div className={`text-sm px-3 py-2 rounded-xl leading-relaxed ${
+                        line.speaker === "agent" ? "bg-indigo-50 text-slate-800" : "bg-slate-100 text-slate-800"
+                      }`}>
+                        {line.text}
+                      </div>
+                      {line.objection && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-medium">
+                          Objection: {line.objection}
+                        </span>
+                      )}
+                      {line.benefit && (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-medium">
+                          ✓ Pitched: {line.benefit}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+
+            {callState === "ended" && (
+              <div className={`rounded-xl border p-5 space-y-4 ${cta.cls}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CtaIcon size={18} className="text-slate-700" />
+                    <h3 className="text-sm font-bold text-slate-900">Call Outcome: {cta.label}</h3>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${CLASSIFICATION_COLORS[lead.classification]}`}>
+                    {lead.classification}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700">{cta.detail}</p>
+                {lead.expectedCTA === "rm_scheduled" && (
+                  <div className="bg-white rounded-lg border border-amber-200 px-4 py-3">
+                    <p className="text-xs font-semibold text-amber-700 mb-1">RM Handoff Brief Generated</p>
+                    <p className="text-xs text-slate-600">Interest: 8/10 · Readiness: 7/10 · Network: Medium (~80 clients)</p>
+                    <p className="text-xs text-slate-500 mt-1 italic">Opening: "Rajesh ji, Zerodha se alag kya milega — main clearly batata hoon."</p>
+                  </div>
+                )}
+                {lead.expectedCTA === "whatsapp_sent" && (
+                  <div className="bg-[#e9fbe8] rounded-lg border border-[#c3f0c0] p-3">
+                    <p className="text-xs font-semibold text-emerald-700 mb-1">WhatsApp Sent</p>
+                    <p className="text-xs text-slate-700">
+                      Hi {lead.name}! Thanks for the chat today. Here's your sign-up link for Rupeezy's AP program — zero joining fee, 100% brokerage, daily payouts.
+                    </p>
+                    <div className="mt-2">
+                      <a href="#" className="flex items-center gap-1.5 text-xs text-indigo-600 bg-white border border-indigo-200 px-3 py-1.5 rounded-lg font-medium w-fit">
+                        <ExternalLink size={10} /> rupeezy.in/partner/signup
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {lead.expectedCTA === "no_action" && (
+                  <div className="bg-white rounded-lg border border-slate-200 px-4 py-3">
+                    <p className="text-xs font-semibold text-slate-600 mb-1">Re-engagement Scheduled</p>
+                    <p className="text-xs text-slate-500">Next contact: ~60 days · Reason: satisfied with current broker</p>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 pt-1 text-xs text-slate-500">
+                  <span>Duration: {formatDuration(callDuration)}</span>
+                  <span>·</span>
+                  <span>Language: {lead.language}</span>
+                  <span>·</span>
+                  <span>Benefits pitched: {benefitsPitched.length > 0 ? benefitsPitched.join(", ") : "Partial"}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

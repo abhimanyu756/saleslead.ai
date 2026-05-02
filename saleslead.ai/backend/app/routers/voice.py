@@ -5,10 +5,9 @@ Two webhooks:
   POST /voice/post-call — called by ElevenLabs when call ends
 """
 
-import json
 from datetime import datetime, timezone
 
-import anthropic
+import google.generativeai as genai
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -23,51 +22,69 @@ from app.workers.tasks import process_call
 
 router = APIRouter(prefix="/voice", tags=["voice"])
 
-_anthropic = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+genai.configure(api_key=settings.GEMINI_API_KEY)
+_model = genai.GenerativeModel("gemini-1.5-flash")
 
 
 @router.post("/llm")
 async def elevenlabs_llm_hook(body: ElevenLabsLLMRequest, db: AsyncSession = Depends(get_db)):
     """
-    ElevenLabs calls this endpoint instead of Claude directly.
+    ElevenLabs calls this endpoint instead of Gemini directly.
     We receive the conversation history and stream back the agent's reply.
     """
     lead_name = body.lead_name or "there"
     language = body.language or "Hindi"
 
-    # Fetch broker affiliation if lead_id is known
     broker = None
+    prior_summary = None
+    prior_objections = None
+    prior_classification = None
+
     if body.lead_id:
         result = await db.execute(select(Lead).where(Lead.id == body.lead_id))
         lead = result.scalar_one_or_none()
         if lead:
             broker = lead.broker_affiliation
+            # Fetch most recent processed call for multi-turn memory
+            from sqlalchemy.orm import selectinload
+            prior_result = await db.execute(
+                select(Call)
+                .options(selectinload(Call.objections))
+                .where(Call.lead_id == body.lead_id, Call.processed == True)
+                .order_by(Call.started_at.desc())
+            )
+            prior_call = prior_result.scalars().first()
+            if prior_call:
+                prior_summary = prior_call.summary
+                prior_objections = [o.type for o in prior_call.objections]
+                prior_classification = prior_call.classification
 
-    system_prompt = build_system_prompt(lead_name, language, broker)
+    system_prompt = build_system_prompt(
+        lead_name, language, broker,
+        prior_call_summary=prior_summary,
+        prior_objections=prior_objections,
+        prior_classification=prior_classification,
+    )
 
-    messages = [
-        {"role": "user" if t.role == "user" else "assistant", "content": t.message}
-        for t in body.history
-    ]
-    # ElevenLabs expects the last message from the user
-    if not messages or messages[-1]["role"] != "user":
-        raise HTTPException(400, "Last history turn must be from user")
+    # Build Gemini chat history
+    history = []
+    for t in body.history[:-1]:
+        history.append({
+            "role": "user" if t.role == "user" else "model",
+            "parts": [t.message],
+        })
+
+    last_message = body.history[-1].message if body.history else ""
+    if not last_message:
+        raise HTTPException(400, "Empty history")
 
     def generate():
-        with _anthropic.messages.stream(
-            model="claude-sonnet-4-6",
-            max_tokens=200,
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                yield text
+        chat = _model.start_chat(history=history)
+        full_prompt = f"{system_prompt}\n\n{last_message}"
+        response = chat.send_message(full_prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
 
     return StreamingResponse(generate(), media_type="text/plain")
 
@@ -88,7 +105,6 @@ async def post_call_webhook(
     if not lead:
         raise HTTPException(404, "Lead not found")
 
-    # Convert ElevenLabs transcript format to our internal format
     transcript = [
         {"speaker": "agent" if t.role == "agent" else "lead", "text": t.message, "timestamp": ""}
         for t in body.transcript

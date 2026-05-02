@@ -6,8 +6,8 @@ alembic==1.14.0
 pydantic==2.10.3
 pydantic-settings==2.6.1
 python-multipart==0.0.17
-anthropic==0.40.0
-elevenlabs==1.14.3
+google-generativeai==0.8.3
+elevenlabs==2.45.0
 twilio==9.3.7
 rq==2.0.0
 redis==5.2.1

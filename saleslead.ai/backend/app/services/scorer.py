@@ -1,13 +1,14 @@
-"""Post-call Claude scorer — receives full transcript, returns structured JSON."""
+"""Post-call Gemini scorer — receives full transcript, returns structured JSON."""
 
 import json
 from typing import Any
 
-import anthropic
+import google.generativeai as genai
 
 from app.config import settings
 
-_client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+genai.configure(api_key=settings.GEMINI_API_KEY)
+_model = genai.GenerativeModel("gemini-1.5-flash")
 
 ALL_5_OBJECTIONS = [
     "I'm already with another broker",
@@ -32,7 +33,7 @@ Schema:
   "readiness_evidence": ["<quote>", ...],
   "classification": "Hot" | "Warm" | "Cold",
   "cta_outcome": "signed_up" | "rm_scheduled" | "whatsapp_sent" | "no_action",
-  "benefits_covered": ["Zero joining fee", "100% brokerage share", "Daily payouts"],  // only those actually mentioned
+  "benefits_covered": ["Zero joining fee", "100% brokerage share", "Daily payouts"],
   "objections": [
     {
       "type": "<one of the 5 standard objection strings>",
@@ -58,23 +59,18 @@ async def score_call(transcript: list[dict[str, str]], lead_name: str) -> dict[s
         f"[{t['speaker'].upper()}]: {t['text']}" for t in transcript
     )
 
-    response = _client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=[
-            {
-                "type": "text",
-                "text": _SCORER_SYSTEM,
-                "cache_control": {"type": "ephemeral"},  # prompt caching
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": f"Lead name: {lead_name}\n\nTranscript:\n{transcript_text}",
-            }
-        ],
+    prompt = (
+        _SCORER_SYSTEM
+        + f"\n\nLead name: {lead_name}\n\nTranscript:\n{transcript_text}"
     )
 
-    raw = response.content[0].text.strip()
+    response = _model.generate_content(prompt)
+    raw = response.text.strip()
+
+    # Strip markdown code fences if Gemini adds them
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+
     return json.loads(raw)

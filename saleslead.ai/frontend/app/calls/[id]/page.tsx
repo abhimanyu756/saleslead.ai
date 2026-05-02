@@ -1,9 +1,17 @@
 "use client";
 
-import { use, useState } from "react";
-import { MOCK_LEADS, ALL_5_OBJECTIONS } from "@/lib/mock-data";
+import { use, useEffect, useState } from "react";
+import { api, Lead, Call } from "@/lib/api";
 import { ArrowLeft, Clock, Globe, User, ChevronDown, ChevronUp, CheckCircle, AlertCircle, MinusCircle, Circle, MessageCircle, Send, ExternalLink, Zap } from "lucide-react";
 import Link from "next/link";
+
+const ALL_5_OBJECTIONS = [
+  "I'm already with another broker",
+  "I don't have enough contacts",
+  "What if my clients face issues — who handles support?",
+  "Is Rupeezy trustworthy?",
+  "I'll think about it / call me later",
+];
 
 function classificationBadge(c: string) {
   if (c === "Hot") return "bg-amber-100 text-amber-700 border-amber-200";
@@ -35,12 +43,29 @@ function ScoreBar({ score, label }: { score: number; label: string }) {
 
 export default function CallDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [call, setCall] = useState<Call | null>(null);
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [loading, setLoading] = useState(true);
   const [transcriptOpen, setTranscriptOpen] = useState(true);
 
-  const lead = MOCK_LEADS.find((l) => l.calls.some((c) => c.id === id));
-  const call = lead?.calls.find((c) => c.id === id);
+  useEffect(() => {
+    api.getCall(id)
+      .then(async (c) => {
+        setCall(c);
+        const l = await api.getLead(c.lead_id);
+        setLead(l);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
 
-  if (!lead || !call) {
+  if (loading) {
+    return (
+      <div className="p-6 text-sm text-slate-400">Loading...</div>
+    );
+  }
+
+  if (!call || !lead) {
     return (
       <div className="p-6">
         <p className="text-slate-500">Call not found.</p>
@@ -51,7 +76,6 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
 
   const cta = ctaBadge(call.cta_outcome);
   const CtaIcon = cta.icon;
-
   const raisedObjections = new Map(call.objections.map((o) => [o.type, o]));
 
   return (
@@ -93,69 +117,76 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        {/* Summary */}
         <div className="mt-5 pt-4 border-t border-slate-100">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Call Summary</p>
-          <p className="text-sm text-slate-700 leading-relaxed">{call.summary}</p>
+          <p className="text-sm text-slate-700 leading-relaxed">{call.summary ?? "Processing..."}</p>
         </div>
 
-        {/* Benefits covered */}
-        <div className="mt-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Benefits Pitched</p>
-          <div className="flex gap-2 flex-wrap">
-            {["Zero joining fee", "100% brokerage share", "Daily payouts"].map((b) => {
-              const covered = call.benefits_covered.includes(b);
-              return (
-                <span key={b} className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${covered ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400 line-through"}`}>
-                  {covered ? <CheckCircle size={10} /> : <Circle size={10} />}
-                  {b}
-                </span>
-              );
-            })}
+        {call.benefits_covered.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Benefits Pitched</p>
+            <div className="flex gap-2 flex-wrap">
+              {["Zero joining fee", "100% brokerage share", "Daily payouts"].map((b) => {
+                const covered = call.benefits_covered.includes(b);
+                return (
+                  <span key={b} className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${covered ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400 line-through"}`}>
+                    {covered ? <CheckCircle size={10} /> : <Circle size={10} />}
+                    {b}
+                  </span>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Recommended action */}
-        <div className="mt-4 bg-slate-50 rounded-lg px-4 py-3">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Next Action</p>
-          <p className="text-sm text-slate-700">{call.recommended_next_action}</p>
-        </div>
+        {call.recommended_next_action && (
+          <div className="mt-4 bg-slate-50 rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Next Action</p>
+            <p className="text-sm text-slate-700">{call.recommended_next_action}</p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-5 gap-4">
         {/* Scores */}
         <div className="col-span-2 bg-white rounded-xl border border-slate-100 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-slate-900">Lead Scores</h2>
-          <ScoreBar score={call.score.interest_score} label="Interest" />
-          <ScoreBar score={call.score.readiness_score} label="Readiness" />
+          {call.score ? (
+            <>
+              <ScoreBar score={call.score.interest_score} label="Interest" />
+              <ScoreBar score={call.score.readiness_score} label="Readiness" />
 
-          <div className="pt-1">
-            <p className="text-xs text-slate-500 font-medium mb-1">Network Size</p>
-            <span className="capitalize text-sm font-bold text-slate-900">{call.score.network_size}</span>
-            <ul className="mt-1 space-y-0.5">
-              {call.score.network_evidence.map((e, i) => (
-                <li key={i} className="text-xs text-slate-500 flex gap-1.5"><span>›</span>{e}</li>
-              ))}
-            </ul>
-          </div>
+              <div className="pt-1">
+                <p className="text-xs text-slate-500 font-medium mb-1">Network Size</p>
+                <span className="capitalize text-sm font-bold text-slate-900">{call.score.network_size}</span>
+                <ul className="mt-1 space-y-0.5">
+                  {call.score.network_evidence.map((e, i) => (
+                    <li key={i} className="text-xs text-slate-500 flex gap-1.5"><span>›</span>{e}</li>
+                  ))}
+                </ul>
+              </div>
 
-          <div className="pt-2 border-t border-slate-100 space-y-3">
-            <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Interest Evidence</p>
-              {call.score.interest_evidence.map((e, i) => (
-                <p key={i} className="text-xs text-slate-600 flex gap-1.5 mb-0.5"><span className="text-emerald-500">›</span>{e}</p>
-              ))}
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Readiness Evidence</p>
-              {call.score.readiness_evidence.map((e, i) => (
-                <p key={i} className="text-xs text-slate-600 flex gap-1.5 mb-0.5"><span className="text-blue-500">›</span>{e}</p>
-              ))}
-            </div>
-          </div>
+              <div className="pt-2 border-t border-slate-100 space-y-3">
+                <div>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Interest Evidence</p>
+                  {call.score.interest_evidence.map((e, i) => (
+                    <p key={i} className="text-xs text-slate-600 flex gap-1.5 mb-0.5"><span className="text-emerald-500">›</span>{e}</p>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Readiness Evidence</p>
+                  {call.score.readiness_evidence.map((e, i) => (
+                    <p key={i} className="text-xs text-slate-600 flex gap-1.5 mb-0.5"><span className="text-blue-500">›</span>{e}</p>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">Scores processing...</p>
+          )}
         </div>
 
-        {/* All 5 Objections */}
+        {/* Objections */}
         <div className="col-span-3 bg-white rounded-xl border border-slate-100 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-900">Objection Handling</h2>
@@ -211,7 +242,7 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* WhatsApp panel — shown for Warm leads */}
+      {/* WhatsApp panel */}
       {call.whatsapp && (
         <div className="bg-white rounded-xl border border-slate-100 p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -273,6 +304,9 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
 
         {transcriptOpen && (
           <div className="px-5 pb-5 space-y-3 border-t border-slate-100 pt-4">
+            {call.transcript.length === 0 && (
+              <p className="text-sm text-slate-400">No transcript available.</p>
+            )}
             {call.transcript.map((turn, i) => (
               <div key={i} className={`flex gap-3 ${turn.speaker === "lead" ? "flex-row-reverse" : ""}`}>
                 <div className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-0.5 ${

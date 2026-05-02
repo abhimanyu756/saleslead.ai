@@ -7,9 +7,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://saleslead:saleslead@localhost:5432/saleslead"
     REDIS_URL: str = "redis://localhost:6379"
 
-    ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_AGENT_ID: str = ""
+    ELEVENLABS_PHONE_NUMBER_ID: str = ""  # from ElevenLabs dashboard → Phone Numbers
 
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
