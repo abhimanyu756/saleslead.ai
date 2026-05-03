@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_AGENT_ID: str = ""
     ELEVENLABS_PHONE_NUMBER_ID: str = ""  # from ElevenLabs dashboard → Phone Numbers
+    ELEVENLABS_WEBHOOK_SECRET: str = ""  # from ElevenLabs Settings → Webhooks (HMAC secret)
 
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

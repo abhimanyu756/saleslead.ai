@@ -2,13 +2,18 @@
 
 Two webhooks:
   POST /voice/llm   — custom LLM hook, called by ElevenLabs mid-call
-  POST /voice/post-call — called by ElevenLabs when call ends
+  POST /voice/post-call — called by ElevenLabs when call ends (HMAC-signed)
 """
 
+import hashlib
+import hmac
+import json
+import logging
+import time
 from datetime import datetime, timezone
 
 import google.generativeai as genai
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,13 +22,36 @@ from app.config import settings
 from app.database import get_db
 from app.models import Call, Lead
 from app.prompts.system_prompt import build_system_prompt
-from app.schemas import ElevenLabsLLMRequest, ElevenLabsPostCallWebhook
+from app.schemas import ElevenLabsLLMRequest
 from app.workers.tasks import process_call
 
 router = APIRouter(prefix="/voice", tags=["voice"])
+log = logging.getLogger("uvicorn.error")
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
-_model = genai.GenerativeModel("gemini-1.5-flash")
+_model = genai.GenerativeModel("gemini-2.5-flash")
+
+
+def _verify_elevenlabs_signature(body: bytes, signature_header: str, secret: str, max_age_s: int = 1800) -> bool:
+    """Verify ElevenLabs HMAC-SHA256 signature.
+    Header format: 't=<unix_ts>,v0=<hex_signature>'
+    Signed payload: '<unix_ts>.<raw_body>'
+    """
+    try:
+        parts = dict(p.split("=", 1) for p in signature_header.split(","))
+        ts = int(parts["t"])
+        sig = parts["v0"]
+    except (ValueError, KeyError):
+        return False
+    if abs(time.time() - ts) > max_age_s:
+        log.warning(f"[post-call] signature timestamp out of window: {ts}")
+        return False
+    expected = hmac.new(
+        secret.encode(),
+        f"{ts}.{body.decode()}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, sig)
 
 
 @router.post("/llm")
@@ -91,13 +119,50 @@ async def elevenlabs_llm_hook(body: ElevenLabsLLMRequest, db: AsyncSession = Dep
 
 @router.post("/post-call")
 async def post_call_webhook(
-    body: ElevenLabsPostCallWebhook,
+    req: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """ElevenLabs sends this after the call ends."""
-    lead_id = body.metadata.get("lead_id")
+    """ElevenLabs sends this after the call ends.
+    Payload is HMAC-signed and wraps actual data under `data`."""
+    raw = await req.body()
+
+    # Verify HMAC signature
+    if settings.ELEVENLABS_WEBHOOK_SECRET:
+        sig = req.headers.get("ElevenLabs-Signature") or req.headers.get("elevenlabs-signature") or ""
+        if not _verify_elevenlabs_signature(raw, sig, settings.ELEVENLABS_WEBHOOK_SECRET):
+            log.warning("[post-call] HMAC signature invalid, rejecting")
+            raise HTTPException(401, "Invalid signature")
+
+    # Parse ElevenLabs payload (data is nested under `data`)
+    try:
+        envelope = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON")
+    data = envelope.get("data", envelope)  # tolerate either nested or flat
+
+    conversation_id = data.get("conversation_id")
+    metadata = data.get("metadata", {}) or {}
+    transcript_raw = data.get("transcript", []) or []
+
+    log.info(f"[post-call] received conversation_id={conversation_id} turns={len(transcript_raw)}")
+
+    # ElevenLabs may pass our identifiers in several places depending on API version
+    cicd = data.get("conversation_initiation_client_data") or {}
+    dyn = cicd.get("dynamic_variables") or data.get("dynamic_variables") or {}
+    cicd_meta = cicd.get("metadata") or {}
+    analysis = data.get("analysis") or {}
+    analysis_data = analysis.get("data_collection_results") or {}
+
+    lead_id = (
+        metadata.get("lead_id")
+        or cicd_meta.get("lead_id")
+        or dyn.get("lead_id")
+        or analysis_data.get("lead_id")
+    )
     if not lead_id:
+        # Dump full envelope so we can see the actual shape ElevenLabs is sending
+        log.warning(f"[post-call] lead_id missing — full envelope: {json.dumps(envelope)[:2000]}")
         raise HTTPException(400, "lead_id missing in metadata")
 
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
@@ -106,13 +171,17 @@ async def post_call_webhook(
         raise HTTPException(404, "Lead not found")
 
     transcript = [
-        {"speaker": "agent" if t.role == "agent" else "lead", "text": t.message, "timestamp": ""}
-        for t in body.transcript
+        {
+            "speaker": "agent" if t.get("role") == "agent" else "lead",
+            "text": t.get("message") or t.get("text", ""),
+            "timestamp": "",
+        }
+        for t in transcript_raw
     ]
 
     call = Call(
         lead_id=lead_id,
-        elevenlabs_conversation_id=body.conversation_id,
+        elevenlabs_conversation_id=conversation_id,
         ended_at=datetime.now(timezone.utc),
         transcript=transcript,
     )
@@ -120,6 +189,7 @@ async def post_call_webhook(
     await db.commit()
     await db.refresh(call)
 
+    log.info(f"[post-call] saved call {call.id}, enqueueing for processing")
     background_tasks.add_task(_enqueue_processing, call.id)
     return {"call_id": call.id, "status": "queued"}
 

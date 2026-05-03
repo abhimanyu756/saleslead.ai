@@ -16,11 +16,19 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+  return res.json();
+}
+
 export const api = {
   // Leads
   getLeads: () => get<Lead[]>("/leads/"),
   getLead: (id: string) => get<Lead>(`/leads/${id}`),
   createLead: (data: LeadCreate) => post<Lead>("/leads/", data),
+  deleteLead: (id: string) => del<{ deleted: string }>(`/leads/${id}`),
+  deleteAllLeads: () => del<{ deleted: number }>(`/leads/all`),
 
   // Calls
   getCalls: () => get<Call[]>("/calls/"),

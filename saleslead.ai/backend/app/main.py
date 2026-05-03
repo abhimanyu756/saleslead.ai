@@ -36,16 +36,20 @@ async def health():
 @app.get("/r/{lead_id}")
 async def public_redirect(lead_id: str, db: AsyncSession = Depends(get_db)):
     """Public click-tracking redirect for WhatsApp links.
-    Logs the click then 302-redirects to the Rupeezy signup URL."""
-    result = await db.execute(
-        select(WhatsAppMessage)
-        .join(Call)
-        .where(Call.lead_id == lead_id)
-        .order_by(WhatsAppMessage.sent_at.desc())
-    )
-    wa = result.scalars().first()
-    if wa and not wa.clicked_at:
-        wa.clicked_at = datetime.now(timezone.utc)
-        await db.commit()
+    Best-effort logs the click, always redirects to the Rupeezy signup URL."""
     target = f"{settings.RUPEEZY_SIGNUP_BASE_URL}{lead_id}"
+    try:
+        result = await db.execute(
+            select(WhatsAppMessage)
+            .join(Call)
+            .where(Call.lead_id == lead_id)
+            .order_by(WhatsAppMessage.sent_at.desc())
+        )
+        wa = result.scalars().first()
+        if wa and not wa.clicked_at:
+            wa.clicked_at = datetime.now(timezone.utc)
+            await db.commit()
+    except Exception:
+        # Invalid UUID / DB hiccup — still redirect so the lead reaches signup
+        await db.rollback()
     return RedirectResponse(url=target, status_code=302)

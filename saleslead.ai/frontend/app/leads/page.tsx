@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Upload, Plus, Search, Filter, X } from "lucide-react";
+import { Upload, Plus, Search, Filter, X, Trash2 } from "lucide-react";
 import { api, Lead, LeadCreate } from "@/lib/api";
 
 const LANGUAGES = ["Hindi", "English", "Hinglish", "Tamil", "Telugu", "Marathi"];
@@ -77,6 +77,26 @@ export default function LeadsPage() {
     if (file?.name.endsWith(".csv")) handleCsvUpload(file);
   }
 
+  async function handleDeleteLead(id: string, name: string) {
+    if (!confirm(`Delete ${name}? This also removes their calls, transcripts, and WhatsApp records.`)) return;
+    try {
+      await api.deleteLead(id);
+      setLeads(leads.filter((l) => l.id !== id));
+    } catch {
+      alert("Delete failed.");
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (!confirm(`Delete ALL ${leads.length} leads and every related call/transcript/WhatsApp record? This cannot be undone.`)) return;
+    try {
+      await api.deleteAllLeads();
+      setLeads([]);
+    } catch {
+      alert("Bulk delete failed.");
+    }
+  }
+
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
@@ -84,12 +104,22 @@ export default function LeadsPage() {
           <h1 className="text-xl font-bold text-slate-900">Leads</h1>
           <p className="text-sm text-slate-500">{leads.length} total leads</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus size={15} /> Add Lead
-        </button>
+        <div className="flex items-center gap-2">
+          {leads.length > 0 && (
+            <button
+              onClick={handleDeleteAll}
+              className="flex items-center gap-2 bg-white text-rose-600 border border-rose-200 text-sm font-medium px-4 py-2 rounded-lg hover:bg-rose-50 transition-colors"
+            >
+              <Trash2 size={15} /> Delete All
+            </button>
+          )}
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+          >
+            <Plus size={15} /> Add Lead
+          </button>
+        </div>
       </div>
 
       {/* CSV Upload */}
@@ -152,11 +182,12 @@ export default function LeadsPage() {
               <th className="px-4 py-3 font-medium">Source</th>
               <th className="px-4 py-3 font-medium">Classification</th>
               <th className="px-4 py-3 font-medium">Added</th>
+              <th className="px-4 py-3 font-medium w-10"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {filtered.map((lead) => (
-              <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
+              <tr key={lead.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="px-4 py-3 font-medium text-slate-900">{lead.name}</td>
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{lead.phone}</td>
                 <td className="px-4 py-3 text-slate-500">{lead.language_pref}</td>
@@ -169,11 +200,20 @@ export default function LeadsPage() {
                 <td className="px-4 py-3 text-slate-400 text-xs">
                   {new Date(lead.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    onClick={() => handleDeleteLead(lead.id, lead.name)}
+                    className="text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete lead"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-400">No leads found.</td>
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">No leads found.</td>
               </tr>
             )}
           </tbody>

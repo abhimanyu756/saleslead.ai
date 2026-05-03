@@ -2,16 +2,19 @@
 
 import csv
 import io
+import logging
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Lead
+from app.models import Call, CallScore, Lead, Objection, RMHandoff, WhatsAppMessage
 from app.schemas import LeadCreate, LeadOut
+
+log = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -23,30 +26,48 @@ async def _trigger_outbound_call(
     language: str,
     broker_affiliation: str | None = None,
 ):
-    """Fire an ElevenLabs outbound call for a lead. Silently skips if phone number not configured."""
+    """Fire an ElevenLabs outbound call for a lead. Logs result so issues are visible."""
     if not settings.ELEVENLABS_PHONE_NUMBER_ID:
+        log.warning("[outbound_call] SKIP — ELEVENLABS_PHONE_NUMBER_ID not configured")
+        return
+    if not settings.ELEVENLABS_AGENT_ID:
+        log.warning("[outbound_call] SKIP — ELEVENLABS_AGENT_ID not configured")
         return
 
-    async with httpx.AsyncClient(timeout=15) as client:
-        await client.post(
-            "https://api.elevenlabs.io/v1/convai/conversations/outbound_call",
-            headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
-            json={
-                "agent_id": settings.ELEVENLABS_AGENT_ID,
-                "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
-                "to_number": phone,
-                "metadata": {
-                    "lead_id": lead_id,
-                    "lead_name": lead_name,
-                    "language": language,
-                },
-                "dynamic_variables": {
-                    "lead_name": lead_name,
-                    "language": language,
-                    "broker_affiliation": broker_affiliation or "",
-                },
+    payload = {
+        "agent_id": settings.ELEVENLABS_AGENT_ID,
+        "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
+        "to_number": phone,
+        "conversation_initiation_client_data": {
+            "dynamic_variables": {
+                # ElevenLabs RELIABLY echoes these back in post-call webhook
+                "lead_id": lead_id,
+                "lead_name": lead_name,
+                "language": language,
+                "broker_affiliation": broker_affiliation or "",
             },
-        )
+            "metadata": {
+                "lead_id": lead_id,
+                "lead_name": lead_name,
+                "language": language,
+            },
+        },
+    }
+
+    log.info(f"[outbound_call] Calling {phone} (lead_id={lead_id})")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+                headers={"xi-api-key": settings.ELEVENLABS_API_KEY},
+                json=payload,
+            )
+            log.info(f"[outbound_call] ElevenLabs returned {r.status_code}: {r.text[:300]}")
+            r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        log.error(f"[outbound_call] FAILED for {phone}: {e.response.status_code} — {e.response.text[:500]}")
+    except Exception as e:
+        log.error(f"[outbound_call] EXCEPTION for {phone}: {type(e).__name__}: {e}")
 
 
 @router.get("/", response_model=list[LeadOut])
@@ -116,6 +137,20 @@ async def upload_csv(
     return {"created": created, "skipped": skipped}
 
 
+@router.delete("/all", status_code=200)
+async def delete_all_leads(db: AsyncSession = Depends(get_db)):
+    """Wipe all leads + all related records. Useful for resetting between tests."""
+    # Order matters: child tables first
+    await db.execute(delete(RMHandoff))
+    await db.execute(delete(WhatsAppMessage))
+    await db.execute(delete(Objection))
+    await db.execute(delete(CallScore))
+    await db.execute(delete(Call))
+    result = await db.execute(delete(Lead))
+    await db.commit()
+    return {"deleted": result.rowcount}
+
+
 @router.get("/{lead_id}", response_model=LeadOut)
 async def get_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
@@ -123,3 +158,25 @@ async def get_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
     if not lead:
         raise HTTPException(404, "Lead not found")
     return lead
+
+
+@router.delete("/{lead_id}", status_code=200)
+async def delete_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a single lead and all its calls, scores, objections, WhatsApp records, handoffs."""
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+
+    # Find all calls for this lead, then cascade
+    call_ids = (await db.execute(select(Call.id).where(Call.lead_id == lead_id))).scalars().all()
+    if call_ids:
+        await db.execute(delete(RMHandoff).where(RMHandoff.call_id.in_(call_ids)))
+        await db.execute(delete(WhatsAppMessage).where(WhatsAppMessage.call_id.in_(call_ids)))
+        await db.execute(delete(Objection).where(Objection.call_id.in_(call_ids)))
+        await db.execute(delete(CallScore).where(CallScore.call_id.in_(call_ids)))
+        await db.execute(delete(Call).where(Call.id.in_(call_ids)))
+
+    await db.execute(delete(Lead).where(Lead.id == lead_id))
+    await db.commit()
+    return {"deleted": lead_id}

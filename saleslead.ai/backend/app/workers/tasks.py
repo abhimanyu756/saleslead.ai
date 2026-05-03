@@ -71,6 +71,7 @@ async def _process_call_async(call_id: str) -> None:
         # Route based on classification
         if scored["classification"] == "Hot":
             await _create_rm_handoff(db, call, lead, scored)
+            await _send_whatsapp(db, call, lead)  # also send WhatsApp for Hot (testing convenience)
         elif scored["classification"] == "Warm":
             await _send_whatsapp(db, call, lead)
 
