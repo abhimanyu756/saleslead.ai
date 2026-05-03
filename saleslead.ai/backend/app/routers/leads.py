@@ -16,7 +16,13 @@ from app.schemas import LeadCreate, LeadOut
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 
-async def _trigger_outbound_call(phone: str, lead_id: str, lead_name: str, language: str):
+async def _trigger_outbound_call(
+    phone: str,
+    lead_id: str,
+    lead_name: str,
+    language: str,
+    broker_affiliation: str | None = None,
+):
     """Fire an ElevenLabs outbound call for a lead. Silently skips if phone number not configured."""
     if not settings.ELEVENLABS_PHONE_NUMBER_ID:
         return
@@ -28,11 +34,16 @@ async def _trigger_outbound_call(phone: str, lead_id: str, lead_name: str, langu
             json={
                 "agent_id": settings.ELEVENLABS_AGENT_ID,
                 "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
-                "customer_phone_number": phone,
+                "to_number": phone,
                 "metadata": {
                     "lead_id": lead_id,
                     "lead_name": lead_name,
                     "language": language,
+                },
+                "dynamic_variables": {
+                    "lead_name": lead_name,
+                    "language": language,
+                    "broker_affiliation": broker_affiliation or "",
                 },
             },
         )
@@ -99,6 +110,7 @@ async def upload_csv(
             str(lead.id),
             lead.name,
             lead.language_pref,
+            lead.broker_affiliation,
         )
 
     return {"created": created, "skipped": skipped}

@@ -1,0 +1,908 @@
+================================================================================
+SALESLEAD.AI — END-TO-END IMPLEMENTATION PROMPT
+WhatsApp via Meta Cloud API · ElevenLabs Voice · Gemini LLM · ngrok tunnel
+================================================================================
+
+Read top to bottom. Each phase has: GOAL, exact STEPS, and a VERIFICATION
+check. Do NOT skip the verification — that's how you find issues at the
+right phase, not three phases later.
+
+Test number for all live tests: +918102652783
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+PHASE 0  — Pre-flight and clean state
+PHASE 1  — ngrok tunnel
+PHASE 2  — ElevenLabs agent configuration (built-in Gemini LLM)
+PHASE 3  — Update outbound call trigger (pass dynamic vars)
+PHASE 4  — GET-redirect endpoint for WhatsApp click tracking
+PHASE 5  — Enhance system prompt for mood detection + language match
+PHASE 6  — Replace Twilio WhatsApp with Meta WhatsApp Cloud API
+PHASE 7  — WhatsApp Cloud API webhook (delivered / read / replied tracking)
+PHASE 8  — Approved template OR 24h service-window strategy
+PHASE 9  — End-to-end live test with +918102652783
+PHASE 10 — Demo prep
+APPENDIX  — File-by-file change checklist · env-var checklist · troubleshooting
+
+--------------------------------------------------------------------------------
+PHASE 0 — PRE-FLIGHT (5 min)
+--------------------------------------------------------------------------------
+
+GOAL: Backend running, frontend running, DB in known-clean state.
+
+STEPS
+
+  1. Confirm Docker Desktop is running (whale icon in menu bar).
+
+  2. Start backend services:
+       cd saleslead.ai/backend
+       docker compose up -d
+       docker compose ps           # all four (db, redis, api, worker) Up
+
+  3. Start frontend (separate terminal):
+       cd saleslead.ai/frontend
+       npm run dev
+
+  4. Apply migrations:
+       docker compose exec api alembic upgrade head
+
+  5. Wipe any leftover demo leads so the test pipeline is clean:
+       docker compose exec db psql -U saleslead -d saleslead \
+         -c "TRUNCATE leads, calls, call_scores, objections, whatsapp_messages, rm_handoffs CASCADE;"
+
+VERIFICATION
+  http://localhost:8000/health     → {"status":"ok"}
+  http://localhost:8000/docs       → Swagger UI loads
+  http://localhost:3000 (or 3001)  → Dashboard loads
+
+--------------------------------------------------------------------------------
+PHASE 1 — ngrok TUNNEL (5 min)
+--------------------------------------------------------------------------------
+
+GOAL: Expose localhost:8000 to the internet so ElevenLabs and Meta can hit
+our webhooks.
+
+STEPS
+
+  1. Install:
+       brew install ngrok
+
+  2. Create a free ngrok account at https://ngrok.com, copy your authtoken
+     from the dashboard, then run once:
+       ngrok config add-authtoken <YOUR_AUTHTOKEN>
+
+  3. In a DEDICATED terminal that you keep open the whole demo:
+       ngrok http 8000
+
+  4. Copy the https URL ngrok prints (e.g. https://abcd-1234.ngrok-free.app).
+     Call this NGROK_URL everywhere below.
+
+VERIFICATION
+  Open NGROK_URL/health in your browser → {"status":"ok"}
+
+WARNING
+  The free ngrok URL changes every restart. If you Ctrl+C ngrok, you must
+  re-paste the new URL into:
+   - ElevenLabs agent (post-call webhook)
+   - Meta App webhook config
+   - .env → NGROK_URL
+  …and then docker compose restart api worker.
+
+--------------------------------------------------------------------------------
+PHASE 2 — ELEVENLABS AGENT CONFIGURATION (15 min)
+--------------------------------------------------------------------------------
+
+GOAL: Wire your existing ElevenLabs agent so that:
+  - It uses Gemini as the LLM (built-in provider, NOT our /voice/llm endpoint)
+  - It speaks the right Indian voice
+  - It receives the lead's name and language as dynamic variables on each call
+  - It POSTs the full transcript to our backend after the call ends
+
+WHY built-in Gemini and not our /voice/llm endpoint:
+  ElevenLabs' Custom LLM feature requires an OpenAI-compatible
+  /v1/chat/completions endpoint. The current /voice/llm uses a custom
+  schema and is NOT OpenAI-compatible. Refactoring it is a 1–2 hour job
+  for marginal gain. Built-in Gemini works fine for the hackathon and we
+  still own the system prompt + post-call analysis.
+
+STEPS
+
+  1. ElevenLabs dashboard → your agent → "LLM" section:
+       Provider:  Google Gemini
+       Model:     gemini-1.5-flash (fast, cheap, good multilingual)
+
+  2. "First message" field:
+       Namaste {{lead_name}}, main Rupeezy se baat kar raha hoon. Do minute hain aapke paas?
+
+  3. Paste the System Prompt (use the FULL updated version from Phase 5).
+     Keep ElevenLabs placeholder syntax: {{lead_name}}, {{language}},
+     {{broker_affiliation}}.
+
+  4. Voice → pick a multilingual Indian voice. Test 2–3, pick the one
+     that sounds least synthetic when speaking Hinglish.
+
+  5. "Dynamic variables" tab (or wherever your dashboard surfaces them):
+       lead_name              (string)
+       language               (string)
+       broker_affiliation     (string, optional)
+
+  6. "Webhooks" → "Post-call webhook":
+       URL:    NGROK_URL/voice/post-call
+       Method: POST
+       Auth:   none for hackathon (production: HMAC)
+
+  7. "Phone numbers" tab:
+       - Your imported Twilio number is already there (you mentioned this).
+       - Copy its phone_number_id (looks like pn_xxx...).
+       - Paste into .env:
+            ELEVENLABS_PHONE_NUMBER_ID=pn_xxx...
+
+  8. Save the agent. Restart backend so .env changes are picked up:
+       docker compose restart api worker
+
+VERIFICATION
+  In the ElevenLabs dashboard, click "Test agent" with text input. Type a
+  greeting in Hinglish. The agent should respond using the Rupeezy script,
+  in Hinglish, with energy. If it sounds robotic or breaks character, the
+  system prompt isn't doing its job — fix Phase 5 first.
+
+--------------------------------------------------------------------------------
+PHASE 3 — UPDATE OUTBOUND CALL TRIGGER (10 min)
+--------------------------------------------------------------------------------
+
+GOAL: When CSV upload triggers an outbound call, pass the lead's name and
+language to ElevenLabs as dynamic variables, so the agent's first message
+greets them by name.
+
+FILE: app/routers/leads.py
+FUNCTION: _trigger_outbound_call
+
+CURRENT CODE:
+  json={
+    "agent_id": settings.ELEVENLABS_AGENT_ID,
+    "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
+    "customer_phone_number": phone,
+    "metadata": { "lead_id": ..., "lead_name": ..., "language": ... },
+  }
+
+REPLACE WITH:
+  json={
+    "agent_id": settings.ELEVENLABS_AGENT_ID,
+    "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
+    "to_number": phone,                           # may be customer_phone_number — verify
+    "metadata": {
+        "lead_id": lead_id,
+        "lead_name": lead_name,
+        "language": language,
+    },
+    "dynamic_variables": {
+        "lead_name": lead_name,
+        "language": language,
+        "broker_affiliation": "",                 # fetch from DB if you want
+    },
+  }
+
+WARNING: ElevenLabs occasionally renames API fields. If the call fails
+with a 400, check ElevenLabs' current Conversational AI outbound docs at:
+  https://elevenlabs.io/docs/conversational-ai
+The two field names that have varied are:
+  - to_number  vs  customer_phone_number
+  - dynamic_variables  vs  variables
+
+TEST WITH ONE LEAD before bulk upload.
+
+VERIFICATION
+  After Phase 9 step 1, your phone should ring and the agent's first words
+  should include your test lead's name (e.g. "Namaste Abhimanyu, ...").
+
+--------------------------------------------------------------------------------
+PHASE 4 — GET-REDIRECT ENDPOINT FOR WHATSAPP CLICK TRACKING (10 min)
+--------------------------------------------------------------------------------
+
+GOAL: When a lead taps the WhatsApp link, our backend logs the click and
+302-redirects to the real Rupeezy signup URL.
+
+The current /calls/track-click endpoint is a POST — phones can't hit it.
+We need a public GET endpoint that takes the lead_id in the path.
+
+FILE: app/main.py — add this route:
+
+  from fastapi.responses import RedirectResponse
+  from sqlalchemy import select
+  from sqlalchemy.ext.asyncio import AsyncSession
+  from datetime import datetime, timezone
+
+  from app.database import get_db
+  from app.models import Call, WhatsAppMessage
+
+  @app.get("/r/{lead_id}")
+  async def public_redirect(lead_id: str, db: AsyncSession = Depends(get_db)):
+      """Public click-tracking redirect for WhatsApp links."""
+      result = await db.execute(
+          select(WhatsAppMessage)
+          .join(Call)
+          .where(Call.lead_id == lead_id)
+          .order_by(WhatsAppMessage.sent_at.desc())
+      )
+      wa = result.scalars().first()
+      if wa and not wa.clicked_at:
+          wa.clicked_at = datetime.now(timezone.utc)
+          await db.commit()
+      target = f"{settings.RUPEEZY_SIGNUP_BASE_URL}{lead_id}"
+      return RedirectResponse(url=target, status_code=302)
+
+ALSO update build_signup_link to use this redirect, NOT the raw Rupeezy URL.
+The whole point is to track clicks.
+
+FILE: app/services/whatsapp.py
+  def build_signup_link(lead_id: str) -> str:
+      return f"{settings.NGROK_URL}/r/{lead_id}"
+
+FILE: app/config.py — add NGROK_URL setting:
+  NGROK_URL: str = "http://localhost:8000"
+
+FILE: .env — add:
+  NGROK_URL=https://abcd-1234.ngrok-free.app    # paste the live ngrok URL
+
+Restart:
+  docker compose restart api worker
+
+VERIFICATION
+  1. Manually open NGROK_URL/r/<some-uuid> in browser → should redirect to
+     Rupeezy URL with the ref param. (Will fail "no whatsapp message" but
+     redirect should happen anyway — ensure we redirect even when no row.)
+  2. After Phase 9 with a Warm classification, tap the link from your phone,
+     then check:
+       docker compose exec db psql -U saleslead -d saleslead \
+         -c "SELECT lead_id, clicked_at FROM whatsapp_messages WHERE clicked_at IS NOT NULL;"
+
+--------------------------------------------------------------------------------
+PHASE 5 — ENHANCE SYSTEM PROMPT (15 min)
+--------------------------------------------------------------------------------
+
+GOAL: The agent should track emotional cues, adapt tone, and never
+sound scripted.
+
+FILE: app/prompts/system_prompt.py — INSERT this new section into
+SALES_SYSTEM_PROMPT before "## Output format":
+
+  ## Mood & Conversation Steering
+  Read the lead's mood every turn and adapt:
+
+  - HIGH ENERGY (excited, asking many questions, "tell me more") →
+    Push toward CTA quickly. Ask one qualifying question, then offer
+    sign-up or RM call.
+
+  - HESITANT (long pauses, "hmm", "let me think", "maybe") →
+    Soften. Offer "main aapko WhatsApp pe details bhej deta hoon, aap
+    apne pace pe dekh lo." Don't push.
+
+  - FRUSTRATED ("I don't have time", abrupt tone, sighs) →
+    Respect it. 30-second pitch max, then offer WhatsApp and exit:
+    "Bilkul samajhta hoon, aap busy hain. Main 30 second mein WhatsApp
+    bhej deta hoon, badme dekh lijiye."
+
+  - SKEPTICAL ("really?", "are you sure?", "kaise trust karein?") →
+    Lead with proof: SEBI registration, ₹500 Cr+ AUM, 5-star Play Store
+    rating, 3-year track record. Offer to send fact sheet on WhatsApp.
+
+  - ENGAGED (asking specifics like "kitna milega", "kab payout aata hai") →
+    You're winning. Answer concretely (100% brokerage, daily, T+1).
+    Then qualify network size and push for sign-up.
+
+  Lead says "not interested" twice → exit gracefully:
+    "Bilkul, no problem. Main WhatsApp pe info chhod deta hoon, future
+    mein interest ho toh batayiega." Then end the call politely.
+
+  HARD RULES:
+  - Never repeat a benefit you've already stated.
+  - Never pressure. Never use guilt or scarcity.
+  - Never argue about the lead's current broker — acknowledge first.
+  - If you don't know something (specific tax rule, exact onboarding date),
+    say "main aapko exact info WhatsApp kar deta hoon" instead of guessing.
+
+  ## Language — Match Strictly
+  - Detect language from the lead's FIRST response, not just from the
+    declared preference. Override preference if needed.
+  - Match the lead's exact register: Hinglish stays Hinglish (do not switch
+    to pure Hindi or pure English mid-call). Tamil-English mix → match it.
+  - Match formality: "aap" if they use "aap"; "tum/tu" only if they do.
+  - SHORT answers. 1–2 sentences per turn. This is a phone call, not an essay.
+
+After updating in code, COPY the rendered full prompt (with placeholders left
+intact) and PASTE it into the ElevenLabs dashboard system prompt. ElevenLabs
+holds the live prompt — our system_prompt.py is just the source of truth.
+
+VERIFICATION
+  Test in ElevenLabs UI with three roleplay flows:
+    (a) "Wow, tell me everything!"  → should drive to CTA quickly
+    (b) "Hmm, let me think about it" → should offer WhatsApp, soften
+    (c) "I'm busy, I don't have time" → should exit gracefully in 30s
+  Tone should clearly differ across the three.
+
+--------------------------------------------------------------------------------
+PHASE 6 — REPLACE TWILIO WHATSAPP WITH META CLOUD API (30 min)
+--------------------------------------------------------------------------------
+
+GOAL: Send WhatsApp messages via Meta's WhatsApp Cloud API instead of Twilio.
+
+You said you have a Meta Business account and have already sent a test
+message. So you have:
+  - WhatsApp Business Account (WABA)
+  - A test phone number (Cloud API provides one for free)
+  - An access token (temporary 24h or permanent System User token)
+  - A "From" phone_number_id
+
+Collect these four values from your Meta App dashboard
+(developers.facebook.com → your app → WhatsApp → API Setup):
+
+  WHATSAPP_ACCESS_TOKEN     — long string starting with "EAA..."
+  WHATSAPP_PHONE_NUMBER_ID  — numeric, NOT the phone number itself
+  WHATSAPP_BUSINESS_ID      — numeric (only needed for template management)
+  META_VERIFY_TOKEN         — any string you choose, used in Phase 7 webhook
+
+CODE CHANGES
+
+  STEP 1 — Add env vars
+
+  FILE: app/config.py
+
+    class Settings(BaseSettings):
+        ...
+        # Meta WhatsApp Cloud API
+        WHATSAPP_ACCESS_TOKEN: str = ""
+        WHATSAPP_PHONE_NUMBER_ID: str = ""
+        WHATSAPP_TEMPLATE_NAME: str = "rupeezy_ap_signup"
+        WHATSAPP_TEMPLATE_LANG: str = "en"
+        META_VERIFY_TOKEN: str = "rupeezy-verify-2026"
+
+        # ngrok / public URL
+        NGROK_URL: str = "http://localhost:8000"
+
+  FILE: .env  (fill these in with your Meta values)
+
+    WHATSAPP_ACCESS_TOKEN=EAA...
+    WHATSAPP_PHONE_NUMBER_ID=1234567890
+    WHATSAPP_TEMPLATE_NAME=rupeezy_ap_signup
+    WHATSAPP_TEMPLATE_LANG=en
+    META_VERIFY_TOKEN=rupeezy-verify-2026
+    NGROK_URL=https://abcd-1234.ngrok-free.app
+
+  STEP 2 — Replace whatsapp.py contents
+
+  FILE: app/services/whatsapp.py — replace ENTIRE file with:
+
+    """Meta WhatsApp Cloud API dispatcher for warm lead follow-up."""
+
+    import httpx
+    from app.config import settings
+
+    GRAPH_BASE = "https://graph.facebook.com/v22.0"
+
+    TEMPLATES = {
+        "Hindi": (
+            "नमस्ते {name} 🙏\n\n"
+            "अभी-अभी हमारी बात हुई — Rupeezy AP Program के बारे में।\n\n"
+            "Zero joining fee, 100% brokerage share, और daily payouts.\n\n"
+            "नीचे link से अभी sign up करें — बस 2 मिनट लगेगा:\n{link}\n\n"
+            "कोई सवाल हो तो बताइए! 😊"
+        ),
+        "English": (
+            "Hi {name} 👋\n\n"
+            "Great speaking with you just now about the Rupeezy AP Program.\n\n"
+            "Zero joining fee · 100% brokerage share · Daily payouts.\n\n"
+            "Sign up in 2 minutes: {link}\n\n"
+            "Reply if you have any questions!"
+        ),
+        "Hinglish": (
+            "Hi {name} 😊\n\n"
+            "Abhi baat hui thi — Rupeezy AP Program ke baare mein.\n\n"
+            "Zero joining fee, 100% brokerage, aur daily payouts.\n\n"
+            "2 minute mein sign up karo: {link}\n\n"
+            "Koi sawaal ho toh batao!"
+        ),
+    }
+
+
+    def build_signup_link(lead_id: str) -> str:
+        return f"{settings.NGROK_URL}/r/{lead_id}"
+
+
+    def _normalize_phone(phone: str) -> str:
+        # WhatsApp Cloud API expects "918102652783" — no '+', no 'whatsapp:' prefix
+        return phone.lstrip("+").replace(" ", "").replace("-", "")
+
+
+    def _send_freeform(to: str, body: str) -> str:
+        """Send a freeform text message. Only works inside the 24h service window."""
+        url = f"{GRAPH_BASE}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "text",
+            "text": {"body": body, "preview_url": True},
+        }
+        with httpx.Client(timeout=15) as c:
+            r = c.post(url, headers=headers, json=payload)
+            r.raise_for_status()
+            return r.json()["messages"][0]["id"]
+
+
+    def _send_template(to: str, name: str, lang: str, name_param: str, link_id: str) -> str:
+        """Send an approved template — required for business-initiated messages
+        outside the 24h service window."""
+        url = f"{GRAPH_BASE}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "template",
+            "template": {
+                "name": name,
+                "language": {"code": lang},
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [{"type": "text", "text": name_param}],
+                    },
+                    {
+                        "type": "button",
+                        "sub_type": "url",
+                        "index": "0",
+                        "parameters": [{"type": "text", "text": link_id}],
+                    },
+                ],
+            },
+        }
+        with httpx.Client(timeout=15) as c:
+            r = c.post(url, headers=headers, json=payload)
+            r.raise_for_status()
+            return r.json()["messages"][0]["id"]
+
+
+    def send_warm_followup(phone: str, name: str, language: str, lead_id: str) -> dict:
+        link = build_signup_link(lead_id)
+        body = TEMPLATES.get(language, TEMPLATES["Hindi"]).format(name=name, link=link)
+        to = _normalize_phone(phone)
+
+        # Strategy:
+        #   1. Try freeform (works if lead messaged us in last 24h — demo case
+        #      where you texted the test number first to open the window).
+        #   2. Fall back to approved template (production case).
+        try:
+            wa_id = _send_freeform(to, body)
+        except httpx.HTTPStatusError:
+            wa_id = _send_template(
+                to=to,
+                name=settings.WHATSAPP_TEMPLATE_NAME,
+                lang=settings.WHATSAPP_TEMPLATE_LANG,
+                name_param=name,
+                link_id=lead_id,
+            )
+
+        return {
+            "message_text": body,
+            "link": link,
+            "language": language,
+            "twilio_sid": wa_id,    # column is named twilio_sid; reuse it for wa message id
+        }
+
+  STEP 3 — Drop Twilio dependency (optional but cleaner)
+
+  FILE: requirements.txt — remove the line:
+    twilio==9.3.7
+
+  Then rebuild:
+    docker compose up --build -d
+
+  Keep .env's old TWILIO_* vars for now in case you want to revert; harmless.
+
+VERIFICATION (manual send test)
+
+  After your test phone (+918102652783) has sent ANY message to your Cloud
+  API number once (this opens the 24h service window — see Phase 8), run:
+
+    docker compose exec api python -c "
+    from app.services.whatsapp import _send_freeform
+    print(_send_freeform('918102652783', 'Test from Rupeezy AP backend'))
+    "
+
+  Your phone should receive the message within a few seconds.
+
+  If you get HTTP 400 with code 131047 ("Re-engagement message"), the 24h
+  window is closed — text "Hi" from your phone to the Cloud API number,
+  then retry.
+
+--------------------------------------------------------------------------------
+PHASE 7 — META WEBHOOK FOR DELIVERED / READ / REPLIED (20 min)
+--------------------------------------------------------------------------------
+
+GOAL: Track WhatsApp message lifecycle — delivered, read, lead's reply.
+This populates the "awaiting response" column on the dashboard.
+
+DB CHANGE
+  Add columns on whatsapp_messages: delivered_at, read_at, replied_at.
+
+FILE: app/models.py — add to WhatsAppMessage:
+
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    read_at:      Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    replied_at:   Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+Then create + apply a migration:
+  docker compose exec api alembic revision --autogenerate -m "wa lifecycle columns"
+  docker compose exec api alembic upgrade head
+
+NEW ROUTER
+  FILE: app/routers/whatsapp.py — create with:
+
+    """Meta WhatsApp Cloud API webhook for delivery/read/reply status."""
+
+    from datetime import datetime, timezone
+
+    from fastapi import APIRouter, Depends, Query, Request
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.config import settings
+    from app.database import get_db
+    from app.models import WhatsAppMessage
+
+    router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
+
+
+    @router.get("/webhook")
+    async def verify(
+        mode: str = Query(..., alias="hub.mode"),
+        token: str = Query(..., alias="hub.verify_token"),
+        challenge: str = Query(..., alias="hub.challenge"),
+    ):
+        """Meta calls this once to verify webhook ownership."""
+        if mode == "subscribe" and token == settings.META_VERIFY_TOKEN:
+            return int(challenge)
+        return {"error": "verify token mismatch"}
+
+
+    @router.post("/webhook")
+    async def receive(req: Request, db: AsyncSession = Depends(get_db)):
+        body = await req.json()
+        for entry in body.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+
+                # Status updates: sent / delivered / read / failed
+                for status in value.get("statuses", []):
+                    wa_id = status.get("id")
+                    state = status.get("status")
+                    ts = datetime.now(timezone.utc)
+                    res = await db.execute(
+                        select(WhatsAppMessage).where(WhatsAppMessage.twilio_sid == wa_id)
+                    )
+                    wa = res.scalar_one_or_none()
+                    if not wa:
+                        continue
+                    if state == "delivered" and not wa.delivered_at:
+                        wa.delivered_at = ts
+                    elif state == "read" and not wa.read_at:
+                        wa.read_at = ts
+                    await db.commit()
+
+                # Inbound messages: lead replied
+                for msg in value.get("messages", []):
+                    from_phone = msg.get("from", "")
+                    res = await db.execute(
+                        select(WhatsAppMessage)
+                        .join(WhatsAppMessage.call)
+                        .order_by(WhatsAppMessage.sent_at.desc())
+                    )
+                    # Best-effort: match by phone via the related lead
+                    for wa in res.scalars():
+                        if wa.call.lead.phone.lstrip("+") == from_phone and not wa.replied_at:
+                            wa.replied_at = datetime.now(timezone.utc)
+                            await db.commit()
+                            break
+
+        return {"ok": True}
+
+  Mount the router in app/main.py:
+    from app.routers import whatsapp
+    app.include_router(whatsapp.router)
+
+META APP CONFIG
+
+  1. developers.facebook.com → your app → WhatsApp → Configuration.
+  2. Webhook → "Edit":
+       Callback URL:  NGROK_URL/whatsapp/webhook
+       Verify token:  rupeezy-verify-2026   (must match META_VERIFY_TOKEN)
+  3. Click "Verify and save". If it fails, ensure backend is running and
+     the route returns the challenge as integer.
+  4. Subscribe to webhook fields:
+       messages   ← required for delivery/read + inbound messages
+
+VERIFICATION
+  1. Send a test WhatsApp via Phase 6 verification.
+  2. After the message reaches your phone, run:
+       docker compose exec db psql -U saleslead -d saleslead \
+         -c "SELECT delivered_at, read_at FROM whatsapp_messages ORDER BY sent_at DESC LIMIT 1;"
+     delivered_at should be filled. read_at fills when you open the chat.
+  3. Reply "ok thanks" from your phone to the Cloud API number → replied_at
+     should populate within seconds.
+
+--------------------------------------------------------------------------------
+PHASE 8 — TEMPLATE OR SERVICE-WINDOW STRATEGY (10–60 min)
+--------------------------------------------------------------------------------
+
+WhatsApp Cloud API rule (important):
+  - Business-INITIATED messages to a contact who hasn't messaged you in
+    the past 24h MUST use a pre-approved template.
+  - Once the contact messages you, you have a 24h service window to send
+    freeform messages. After 24h of silence, you need template again.
+
+For the hackathon demo with your test phone, you have two paths:
+
+PATH A — DEMO PATH (zero waiting)
+
+  Before each demo session, use your test phone (+918102652783) to send any
+  message ("Hi") to the Cloud API number. This opens the 24h window. After
+  that, send_warm_followup() will hit the freeform path successfully.
+
+  Pros:  works in 30 seconds, no Meta approval wait
+  Cons:  every recipient must message us first; not realistic for production
+
+PATH B — PRODUCTION PATH (template approval)
+
+  1. Meta Business Manager → WhatsApp Manager → Message Templates →
+     "Create Template".
+  2. Name:       rupeezy_ap_signup
+     Category:   MARKETING
+     Language:   English (start; add Hindi/Hinglish later)
+  3. Body:
+       Hi {{1}}, great chatting about the Rupeezy AP Program!
+       Zero joining fee · 100% brokerage share · Daily payouts.
+       Tap below to sign up — takes 2 minutes.
+  4. Buttons → "Call to action" → "Visit website":
+       Type:                   Dynamic
+       URL pattern:            https://NGROK_URL/r/{{1}}
+       Button text:            Sign up
+  5. Submit. Approval is usually 1–24 hours for Marketing templates.
+
+  Once approved, the fallback in send_warm_followup() (Phase 6 code) hits
+  this template automatically when the freeform path fails.
+
+  WARNING about ngrok URLs in templates:
+    Meta locks template URLs at approval time. If your ngrok URL changes,
+    the template breaks. For demo, use Path A. For production, deploy to
+    Render/Railway/Vercel and use a stable URL in the template.
+
+PICK PATH A FOR THE HACKATHON. Note Path B as production roadmap.
+
+--------------------------------------------------------------------------------
+PHASE 9 — END-TO-END LIVE TEST (30 min)
+--------------------------------------------------------------------------------
+
+GOAL: One real call to your phone, full pipeline confirmed end to end.
+
+PRE-FLIGHT
+  - ngrok running, NGROK_URL pasted in:
+      .env
+      ElevenLabs agent post-call webhook
+      Meta App webhook
+  - All restarts done: docker compose restart api worker
+  - Your test phone (+918102652783) has sent "Hi" to the Cloud API number
+    in the last 24h (opens service window for freeform messages).
+
+STEP 1 — Insert ONE test lead
+  Create file: saleslead.ai/backend/test_lead.csv
+
+    name,phone,language_pref,source,broker_affiliation
+    Abhimanyu Test,+918102652783,Hinglish,manual_test,Zerodha
+
+STEP 2 — Upload it
+  curl -X POST http://localhost:8000/leads/upload-csv -F "file=@test_lead.csv"
+
+  Expected: {"created":1,"skipped":0}
+  Your phone should ring within ~30 seconds.
+
+STEP 3 — Have the call (3 different scenarios, one per test run)
+
+  Run A — HOT path
+    Agent: "Namaste Abhimanyu, ..."
+    You:   "Haan haan, batao."
+    Agent: <pitches benefits>
+    You:   "Kitna brokerage milta hai?"
+    Agent: "100% brokerage, daily payout."
+    You:   "Theek hai, sign up karna hai. Kaise karoon?"
+    Agent: should offer RM transfer or sign-up
+    You:   "Haan haan abhi karte hain"
+    [hang up]
+
+  Run B — WARM path (clear DB and re-upload first)
+    You:   "Hmm, dekhna padega... busy hoon abhi"
+    Agent: should offer WhatsApp + soften
+    You:   "Theek hai, WhatsApp bhej do"
+    [hang up]
+
+  Run C — COLD path
+    You:   "Nahi nahi, interest nahi hai"
+    Agent: rebuts once
+    You:   "Bilkul nahi, mujhe nahi karna"
+    Agent: gracefully exits
+    [hang up]
+
+STEP 4 — Watch logs in real-time during processing
+  docker compose logs -f api worker
+
+  You should see:
+    POST /voice/post-call 200    ← ElevenLabs sent transcript
+    Worker: process_call <id>    ← Gemini scoring
+    Lead classified Hot/Warm/Cold
+
+STEP 5 — Verify DB state
+  docker compose exec db psql -U saleslead -d saleslead -c "
+  SELECT l.name, l.current_classification, c.classification, c.summary
+  FROM leads l JOIN calls c ON c.lead_id = l.id
+  ORDER BY c.started_at DESC;
+  "
+
+STEP 6 — Verify per-classification outcome
+  Hot:
+    SELECT * FROM rm_handoffs;     ← should have a row with brief
+    Dashboard should show 1 in "Hot Leads"
+
+  Warm:
+    Phone should buzz with WhatsApp message
+    Tap the link → browser opens, redirects to Rupeezy URL
+    SELECT clicked_at FROM whatsapp_messages;   ← should be filled
+    SELECT delivered_at, read_at FROM whatsapp_messages;   ← also filled
+
+  Cold:
+    No WhatsApp, no handoff, just lead classification = Cold
+
+If any step fails, isolate to the phase that produced it — re-run the
+Phase X verification, fix, retry the live test.
+
+--------------------------------------------------------------------------------
+PHASE 10 — DEMO PREP (final hour before judging)
+--------------------------------------------------------------------------------
+
+  1. Pre-upload 3 leads (your phone, three different names — "Rajesh",
+     "Priya", "Arjun") so the funnel populates believably.
+
+  2. PRE-RECORD a backup video of one full call. Voice in live demos
+     fails ~30% of the time (mic issues, bad WiFi, ngrok hiccups). A
+     30-second recording saves the demo.
+
+  3. Print the demo script on one page:
+       a) Show empty dashboard
+       b) Upload CSV in front of judges
+       c) Phone rings → put on speaker
+       d) Have the conversation
+       e) Show dashboard updates live (funnel, transcript, summary, score)
+       f) Tap WhatsApp link → show click tracked
+       g) Show RM handoff brief
+
+  4. Have the dashboard open in a tab BEFORE you start. Don't fumble.
+
+  5. 30 min before demo: confirm ngrok hasn't restarted. If it has,
+     re-paste the new URL into ElevenLabs + Meta + .env, restart api/worker.
+
+  6. Have a fallback: if voice fails, show the recorded video. If the
+     whole thing fails, walk through the dashboard with a previously-
+     populated lead.
+
+================================================================================
+APPENDIX A — FILE-BY-FILE CHANGE CHECKLIST
+================================================================================
+
+NEW FILES
+  app/routers/whatsapp.py                 [Phase 7]
+  saleslead.ai/backend/test_lead.csv      [Phase 9]
+
+MODIFIED FILES
+  app/config.py                           [Phase 4, 6]  add NGROK_URL + Meta vars
+  app/main.py                             [Phase 4, 7]  add /r/{lead_id}, mount wa router
+  app/models.py                           [Phase 7]     add wa lifecycle cols
+  app/prompts/system_prompt.py            [Phase 5]     add mood section
+  app/routers/leads.py                    [Phase 3]     add dynamic_variables
+  app/services/whatsapp.py                [Phase 6]     replace Twilio → Cloud API
+  alembic/versions/<new>.py               [Phase 7]     auto-generated migration
+  requirements.txt                        [Phase 6]     remove twilio (optional)
+  .env                                    [Phase 1, 4, 6]  ngrok + Meta vars
+
+ELEVENLABS DASHBOARD CHANGES
+  LLM provider:               Google Gemini (gemini-1.5-flash)
+  System prompt:              paste the full updated SALES_SYSTEM_PROMPT
+  First message:              "Namaste {{lead_name}}, ..."
+  Dynamic variables:          lead_name, language, broker_affiliation
+  Post-call webhook URL:      NGROK_URL/voice/post-call
+  Phone numbers:              copy phone_number_id → .env
+
+META APP DASHBOARD CHANGES
+  Webhook callback URL:       NGROK_URL/whatsapp/webhook
+  Verify token:               rupeezy-verify-2026
+  Subscribed fields:          messages
+  Templates (optional):       rupeezy_ap_signup (Path B only)
+
+================================================================================
+APPENDIX B — FULL .env CHECKLIST
+================================================================================
+
+# Database
+DATABASE_URL=postgresql+asyncpg://saleslead:saleslead@db:5432/saleslead
+REDIS_URL=redis://redis:6379
+
+# Google Gemini
+GEMINI_API_KEY=...
+
+# ElevenLabs
+ELEVENLABS_API_KEY=...
+ELEVENLABS_AGENT_ID=...
+ELEVENLABS_PHONE_NUMBER_ID=pn_...           ← MUST be set or no calls fire
+
+# Meta WhatsApp Cloud API
+WHATSAPP_ACCESS_TOKEN=EAA...
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_TEMPLATE_NAME=rupeezy_ap_signup
+WHATSAPP_TEMPLATE_LANG=en
+META_VERIFY_TOKEN=rupeezy-verify-2026
+
+# Public URL for webhooks + click tracking
+NGROK_URL=https://abcd-1234.ngrok-free.app
+
+# Signup
+RUPEEZY_SIGNUP_BASE_URL=https://rupeezy.in/ap?ref=
+FRONTEND_URL=http://localhost:3000
+
+================================================================================
+APPENDIX C — TROUBLESHOOTING
+================================================================================
+
+SYMPTOM: CSV uploads but no call comes
+  CHECK: ELEVENLABS_PHONE_NUMBER_ID is set in .env
+  CHECK: docker compose logs api → look for the outbound HTTP call
+  CHECK: ElevenLabs dashboard → Conversation history → did a call attempt log?
+
+SYMPTOM: Call connects but agent doesn't say my name
+  CHECK: dynamic_variables payload field name (variables vs dynamic_variables)
+  CHECK: ElevenLabs system prompt uses {{lead_name}} not {lead_name}
+  CHECK: First message field uses {{lead_name}}
+
+SYMPTOM: Call ends but no transcript saved
+  CHECK: NGROK_URL/voice/post-call is reachable from the internet
+  CHECK: ElevenLabs agent → Webhooks → Post-call → URL matches current ngrok
+  CHECK: docker compose logs api → 200 on /voice/post-call?
+
+SYMPTOM: Worker doesn't process the call
+  CHECK: docker compose logs worker — is it picking up jobs?
+  CHECK: GEMINI_API_KEY is valid (test with curl to Gemini API)
+  CHECK: scorer.py JSON parsing — Gemini sometimes wraps in ```json fences
+
+SYMPTOM: WhatsApp send returns 401
+  CHECK: WHATSAPP_ACCESS_TOKEN is current (24h temp tokens expire fast)
+  FIX:   Generate a permanent System User token in Meta Business Settings
+
+SYMPTOM: WhatsApp send returns 400 code 131047
+  CAUSE: 24h window closed and no template OR template not approved
+  FIX (demo):   Send "Hi" from test phone to Cloud API number, retry
+  FIX (prod):   Wait for template approval, ensure name + lang match .env
+
+SYMPTOM: Click on WhatsApp link doesn't track
+  CHECK: WhatsApp link in message points to NGROK_URL/r/{lead_id}, not direct
+  CHECK: docker compose logs api → GET /r/<id> appears?
+  CHECK: clicked_at update SQL ran (look for commit in logs)
+
+SYMPTOM: ngrok URL changed mid-demo
+  FIX: docker compose down && update .env NGROK_URL && docker compose up -d
+       Then update ElevenLabs post-call webhook URL + Meta webhook URL
+
+================================================================================
+END OF IMPLEMENTATION PROMPT
+================================================================================

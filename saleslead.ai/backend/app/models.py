@@ -108,8 +108,11 @@ class WhatsAppMessage(Base):
     link: Mapped[str] = mapped_column(String(500))
     language: Mapped[str] = mapped_column(String(20))
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    replied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     clicked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    twilio_sid: Mapped[Optional[str]] = mapped_column(String(100))
+    twilio_sid: Mapped[Optional[str]] = mapped_column(String(100))  # holds WhatsApp message id
 
     call: Mapped["Call"] = relationship("Call", back_populates="whatsapp")
 

@@ -16,6 +16,16 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
 
+    # Meta WhatsApp Cloud API
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_TEMPLATE_NAME: str = "rupeezy_ap_signup"
+    WHATSAPP_TEMPLATE_LANG: str = "en"
+    META_VERIFY_TOKEN: str = "rupeezy-verify-2026"
+
+    # Public URL for webhooks + click tracking (set this to your ngrok URL)
+    NGROK_URL: str = "http://localhost:8000"
+
     RUPEEZY_SIGNUP_BASE_URL: str = "https://rupeezy.in/ap?ref="
     FRONTEND_URL: str = "http://localhost:3000"
 

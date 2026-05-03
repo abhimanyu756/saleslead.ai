@@ -57,6 +57,9 @@ class WhatsAppOut(BaseModel):
     link: str
     language: str
     sent_at: datetime
+    delivered_at: Optional[datetime]
+    read_at: Optional[datetime]
+    replied_at: Optional[datetime]
     clicked_at: Optional[datetime]
 
     model_config = {"from_attributes": True}
