@@ -1,10 +1,4 @@
-"""Meta WhatsApp Cloud API dispatcher for warm lead follow-up.
-
-Strategy:
-  1. Try freeform — works inside the 24h service window (lead messaged us recently).
-  2. Fall back to approved template — required for business-initiated messages
-     outside the 24h window. Template name + lang come from settings.
-"""
+"""Meta WhatsApp Cloud API dispatcher for warm lead follow-up."""
 
 import httpx
 
@@ -14,42 +8,99 @@ GRAPH_BASE = "https://graph.facebook.com/v22.0"
 
 TEMPLATES = {
     "Hindi": (
-        "नमस्ते {name} 🙏\n\n"
-        "अभी-अभी हमारी बात हुई — Rupeezy AP Program के बारे में।\n\n"
-        "Zero joining fee, 100% brokerage share, और daily payouts.\n\n"
-        "नीचे link से अभी sign up करें — बस 2 मिनट लगेगा:\n{link}\n\n"
-        "कोई सवाल हो तो बताइए! 😊"
+        "नमस्ते {name} जी 🙏\n\n"
+        "अभी-अभी आपसे Rupeezy AP Program के बारे में बात हुई।\n\n"
+        "✅ *Zero joining fee* — कोई upfront cost नहीं\n"
+        "✅ *100% brokerage share* — जो कमाओ, वो पूरा तुम्हारा\n"
+        "✅ *Daily payouts* — हर रोज़ payment, monthly नहीं\n\n"
+        "👇 अभी sign up करें — बस 2 मिनट लगेगा:\n"
+        "{link}\n\n"
+        "कोई सवाल हो तो यहीं reply करें, main help करूंगी! 😊"
     ),
     "English": (
         "Hi {name} 👋\n\n"
-        "Great speaking with you just now about the Rupeezy AP Program.\n\n"
-        "Zero joining fee · 100% brokerage share · Daily payouts.\n\n"
-        "Sign up in 2 minutes: {link}\n\n"
-        "Reply if you have any questions!"
+        "Great speaking with you about the *Rupeezy Authorized Partner Program*!\n\n"
+        "Here's a quick recap of what we offer:\n"
+        "✅ *Zero joining fee* — no upfront cost\n"
+        "✅ *100% brokerage share* — you keep everything you earn\n"
+        "✅ *Daily payouts* — get paid every day, not monthly\n\n"
+        "👇 Sign up in just 2 minutes:\n"
+        "{link}\n\n"
+        "Reply here if you have any questions — happy to help! 😊"
     ),
     "Hinglish": (
         "Hi {name} 😊\n\n"
-        "Abhi baat hui thi — Rupeezy AP Program ke baare mein.\n\n"
-        "Zero joining fee, 100% brokerage, aur daily payouts.\n\n"
-        "2 minute mein sign up karo: {link}\n\n"
-        "Koi sawaal ho toh batao!"
+        "Abhi baat hui thi Rupeezy AP Program ke baare mein!\n\n"
+        "✅ *Zero joining fee* — koi cost nahi\n"
+        "✅ *100% brokerage* — poora aapka\n"
+        "✅ *Daily payouts* — roz milega, monthly nahi\n\n"
+        "👇 2 minute mein sign up karo:\n"
+        "{link}\n\n"
+        "Koi bhi sawaal ho toh yahan reply karo! 🙌"
+    ),
+    "Tamil": (
+        "வணக்கம் {name} 🙏\n\n"
+        "Rupeezy AP Program பற்றி பேசினோம்!\n\n"
+        "✅ *Zero joining fee*\n"
+        "✅ *100% brokerage share*\n"
+        "✅ *Daily payouts*\n\n"
+        "👇 Sign up செய்யுங்கள் — 2 நிமிடம் மட்டுமே:\n"
+        "{link}\n\n"
+        "கேள்விகள் இருந்தால் இங்கே reply செய்யுங்கள்! 😊"
+    ),
+    "Telugu": (
+        "నమస్కారం {name} 🙏\n\n"
+        "Rupeezy AP Program గురించి మాట్లాడాము!\n\n"
+        "✅ *Zero joining fee*\n"
+        "✅ *100% brokerage share*\n"
+        "✅ *Daily payouts*\n\n"
+        "👇 Sign up చేయండి — కేవలం 2 నిమిషాలు:\n"
+        "{link}\n\n"
+        "ఏమైనా అడగాలంటే ఇక్కడ reply చేయండి! 😊"
+    ),
+    "Kannada": (
+        "ನಮಸ್ಕಾರ {name} 🙏\n\n"
+        "Rupeezy AP Program ಬಗ್ಗೆ ಮಾತನಾಡಿದೆವು!\n\n"
+        "✅ *Zero joining fee*\n"
+        "✅ *100% brokerage share*\n"
+        "✅ *Daily payouts*\n\n"
+        "👇 Sign up ಮಾಡಿ — ಕೇವಲ 2 ನಿಮಿಷ:\n"
+        "{link}\n\n"
+        "ಯಾವುದೇ ಪ್ರಶ್ನೆ ಇದ್ದರೆ ಇಲ್ಲಿ reply ಮಾಡಿ! 😊"
+    ),
+    "Marathi": (
+        "नमस्कार {name} 🙏\n\n"
+        "Rupeezy AP Program बद्दल बोललो आपण!\n\n"
+        "✅ *Zero joining fee*\n"
+        "✅ *100% brokerage share*\n"
+        "✅ *Daily payouts*\n\n"
+        "👇 Sign up करा — फक्त 2 मिनिटे:\n"
+        "{link}\n\n"
+        "काही प्रश्न असतील तर इथे reply करा! 😊"
+    ),
+    "Gujarati": (
+        "નમસ્તે {name} 🙏\n\n"
+        "Rupeezy AP Program વિશે વાત થઈ!\n\n"
+        "✅ *Zero joining fee*\n"
+        "✅ *100% brokerage share*\n"
+        "✅ *Daily payouts*\n\n"
+        "👇 Sign up કરો — માત્ર 2 મિનિટ:\n"
+        "{link}\n\n"
+        "કોઈ સવાલ હોય તો અહીં reply કરો! 😊"
     ),
 }
 
 
 def build_signup_link(lead_id: str) -> str:
-    """Click-tracked link. Hits our /r/{lead_id} endpoint, which logs the
-    click and 302-redirects to the real Rupeezy signup URL."""
-    return f"{settings.NGROK_URL}/r/{lead_id}"
+    """Direct Rupeezy signup link with lead_id as referral — no ngrok dependency."""
+    return f"{settings.RUPEEZY_SIGNUP_BASE_URL}{lead_id}"
 
 
 def _normalize_phone(phone: str) -> str:
-    """Cloud API expects '918102652783' — no '+', no 'whatsapp:' prefix."""
     return phone.lstrip("+").replace(" ", "").replace("-", "")
 
 
 def _send_freeform(to: str, body: str) -> str:
-    """Send a freeform text message. Only works inside the 24h service window."""
     url = f"{GRAPH_BASE}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
@@ -68,13 +119,6 @@ def _send_freeform(to: str, body: str) -> str:
 
 
 def _send_template(to: str, name: str, lang: str, name_param: str, link_id: str) -> str:
-    """Send an approved template — required for business-initiated messages
-    outside the 24h service window.
-
-    Expects a template named `name` with:
-      - body component with one variable ({{1}} = lead name)
-      - URL button at index 0 with one dynamic param ({{1}} = lead_id)
-    """
     url = f"{GRAPH_BASE}/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
@@ -109,13 +153,13 @@ def _send_template(to: str, name: str, lang: str, name_param: str, link_id: str)
 
 def send_warm_followup(phone: str, name: str, language: str, lead_id: str) -> dict:
     link = build_signup_link(lead_id)
-    body = TEMPLATES.get(language, TEMPLATES["Hindi"]).format(name=name, link=link)
+    template = TEMPLATES.get(language, TEMPLATES["Hindi"])
+    body = template.format(name=name, link=link)
     to = _normalize_phone(phone)
 
     try:
         wa_id = _send_freeform(to, body)
     except httpx.HTTPStatusError:
-        # 24h window closed — fall back to approved template
         wa_id = _send_template(
             to=to,
             name=settings.WHATSAPP_TEMPLATE_NAME,
@@ -128,5 +172,5 @@ def send_warm_followup(phone: str, name: str, language: str, lead_id: str) -> di
         "message_text": body,
         "link": link,
         "language": language,
-        "twilio_sid": wa_id,  # column kept its name; reuse for WhatsApp message id
+        "twilio_sid": wa_id,
     }
