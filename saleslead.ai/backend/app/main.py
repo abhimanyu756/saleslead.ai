@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import Call, WhatsAppMessage
-from app.routers import calls, dashboard, leads, voice, whatsapp
+from app.routers import auth, calls, dashboard, leads, voice, whatsapp
 
 app = FastAPI(title="SalesLead.ai", version="1.0.0")
 
@@ -21,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(leads.router)
 app.include_router(calls.router)
 app.include_router(dashboard.router)

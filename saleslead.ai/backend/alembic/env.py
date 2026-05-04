@@ -7,10 +7,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
+import os
 from app.database import Base
-from app.models import Lead, Call, CallScore, Objection, WhatsAppMessage, RMHandoff  # noqa: F401
+from app.models import User, Lead, Call, CallScore, Objection, WhatsAppMessage, RMHandoff  # noqa: F401
 
 config = context.config
+
+db_url = os.environ.get("DATABASE_URL", "postgresql+asyncpg://saleslead:saleslead@localhost:5432/saleslead")
+config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

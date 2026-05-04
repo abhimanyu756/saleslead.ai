@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -10,6 +10,7 @@ import {
   PhoneCall,
   Mic,
   Zap,
+  LogOut,
 } from "lucide-react";
 
 const NAV = [
@@ -23,6 +24,14 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user_name");
+    localStorage.removeItem("user_email");
+    router.push("/login");
+  }
 
   return (
     <aside className="w-56 bg-white border-r border-slate-200 flex flex-col shrink-0">
@@ -58,7 +67,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="px-5 py-4 border-t border-slate-100">
+      <div className="px-5 py-4 border-t border-slate-100 space-y-3">
         <div className="text-[11px] text-slate-400">
           <p className="font-medium text-slate-500">Conversion Rate</p>
           <div className="flex items-center gap-2 mt-1">
@@ -69,6 +78,13 @@ export default function Sidebar() {
           </div>
           <p className="mt-1 text-slate-400">Target: 40%+</p>
         </div>
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 text-xs text-slate-500 hover:text-red-600 transition-colors w-full"
+        >
+          <LogOut size={13} />
+          Sign out
+        </button>
       </div>
     </aside>
   );

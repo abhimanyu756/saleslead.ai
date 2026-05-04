@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     RUPEEZY_SIGNUP_BASE_URL: str = "https://rupeezy.in/ap?ref="
     FRONTEND_URL: str = "http://localhost:3000"
+    JWT_SECRET: str = "saleslead-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_HOURS: int = 24
 
 
 settings = Settings()

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import AuthWrapper from "@/components/AuthWrapper";
 
 export const metadata: Metadata = {
   title: "SalesLead.ai — Rupeezy Partner Conversion",
@@ -10,11 +10,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="h-full">
-      <body className="flex h-screen overflow-hidden bg-slate-50">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
+      <body className="bg-slate-50">
+        <AuthWrapper>{children}</AuthWrapper>
       </body>
     </html>
   );
