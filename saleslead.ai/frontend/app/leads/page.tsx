@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Upload, Plus, Search, Filter, X, Trash2 } from "lucide-react";
+import { Upload, Plus, Search, Filter, X, Trash2, PhoneCall } from "lucide-react";
 import { api, Lead, LeadCreate } from "@/lib/api";
 
 const LANGUAGES = ["Hindi", "English", "Hinglish", "Tamil", "Telugu", "Marathi"];
@@ -25,6 +25,8 @@ export default function LeadsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [csvStatus, setCsvStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [batchCalling, setBatchCalling] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   useEffect(() => {
     api.getLeads().then(setLeads).catch(console.error);
@@ -87,6 +89,23 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleBatchCall() {
+    const uncalled = leads.filter((l) => l.current_classification === "Uncalled");
+    if (uncalled.length === 0) { alert("No uncalled leads found."); return; }
+    if (!confirm(`Start batch calls for ${uncalled.length} uncalled leads?`)) return;
+    setBatchCalling(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/leads/batch-call`, { method: "POST" });
+      const data = await res.json();
+      setBatchStatus(`✓ Calling ${data.triggered} leads`);
+    } catch {
+      setBatchStatus("Batch call failed");
+    } finally {
+      setBatchCalling(false);
+      setTimeout(() => setBatchStatus(null), 4000);
+    }
+  }
+
   async function handleDeleteAll() {
     if (!confirm(`Delete ALL ${leads.length} leads and every related call/transcript/WhatsApp record? This cannot be undone.`)) return;
     try {
@@ -105,6 +124,16 @@ export default function LeadsPage() {
           <p className="text-sm text-slate-500">{leads.length} total leads</p>
         </div>
         <div className="flex items-center gap-2">
+          {batchStatus && <span className="text-sm text-emerald-600 font-medium">{batchStatus}</span>}
+          {leads.some((l) => l.current_classification === "Uncalled") && (
+            <button
+              onClick={handleBatchCall}
+              disabled={batchCalling}
+              className="flex items-center gap-2 bg-emerald-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+            >
+              <PhoneCall size={15} /> {batchCalling ? "Calling..." : "Call All Uncalled"}
+            </button>
+          )}
           {leads.length > 0 && (
             <button
               onClick={handleDeleteAll}

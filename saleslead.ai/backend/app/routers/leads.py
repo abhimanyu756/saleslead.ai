@@ -1,5 +1,6 @@
-"""Lead ingestion: single POST + CSV bulk upload."""
+"""Lead ingestion: single POST + CSV bulk upload + batch calling."""
 
+import asyncio
 import csv
 import io
 import logging
@@ -18,6 +19,9 @@ log = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
+# Max concurrent outbound calls at a time
+CALL_CONCURRENCY = 5
+
 
 async def _trigger_outbound_call(
     phone: str,
@@ -26,7 +30,7 @@ async def _trigger_outbound_call(
     language: str,
     broker_affiliation: str | None = None,
 ):
-    """Fire an ElevenLabs outbound call for a lead. Logs result so issues are visible."""
+    """Fire an ElevenLabs outbound call for a lead."""
     if not settings.ELEVENLABS_PHONE_NUMBER_ID:
         log.warning("[outbound_call] SKIP — ELEVENLABS_PHONE_NUMBER_ID not configured")
         return
@@ -40,7 +44,6 @@ async def _trigger_outbound_call(
         "to_number": phone,
         "conversation_initiation_client_data": {
             "dynamic_variables": {
-                # ElevenLabs RELIABLY echoes these back in post-call webhook
                 "lead_id": lead_id,
                 "lead_name": lead_name,
                 "language": language,
@@ -68,6 +71,26 @@ async def _trigger_outbound_call(
         log.error(f"[outbound_call] FAILED for {phone}: {e.response.status_code} — {e.response.text[:500]}")
     except Exception as e:
         log.error(f"[outbound_call] EXCEPTION for {phone}: {type(e).__name__}: {e}")
+
+
+async def _batch_call(leads: list[Lead], delay_seconds: float = 2.0):
+    """Call multiple leads concurrently with a semaphore to limit concurrency."""
+    semaphore = asyncio.Semaphore(CALL_CONCURRENCY)
+
+    async def _call_with_semaphore(lead: Lead):
+        async with semaphore:
+            await _trigger_outbound_call(
+                lead.phone,
+                str(lead.id),
+                lead.name,
+                lead.language_pref,
+                lead.broker_affiliation,
+            )
+            await asyncio.sleep(delay_seconds)
+
+    log.info(f"[batch_call] Starting batch of {len(leads)} leads (concurrency={CALL_CONCURRENCY})")
+    await asyncio.gather(*[_call_with_semaphore(lead) for lead in leads])
+    log.info(f"[batch_call] Batch complete — {len(leads)} leads called")
 
 
 @router.get("/", response_model=list[LeadOut])
@@ -122,25 +145,36 @@ async def upload_csv(
 
     await db.commit()
 
-    # Refresh all new leads to get their generated IDs, then trigger outbound calls
     for lead in new_leads:
         await db.refresh(lead)
-        background_tasks.add_task(
-            _trigger_outbound_call,
-            lead.phone,
-            str(lead.id),
-            lead.name,
-            lead.language_pref,
-            lead.broker_affiliation,
-        )
+
+    if new_leads:
+        background_tasks.add_task(_batch_call, new_leads)
 
     return {"created": created, "skipped": skipped}
 
 
+@router.post("/batch-call", response_model=dict)
+async def batch_call_uncalled(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger outbound calls for all leads that haven't been called yet."""
+    result = await db.execute(
+        select(Lead).where(Lead.current_classification == "Uncalled")
+    )
+    uncalled_leads = result.scalars().all()
+
+    if not uncalled_leads:
+        return {"message": "No uncalled leads found", "triggered": 0}
+
+    background_tasks.add_task(_batch_call, uncalled_leads)
+    return {"message": f"Batch call started", "triggered": len(uncalled_leads)}
+
+
 @router.delete("/all", status_code=200)
 async def delete_all_leads(db: AsyncSession = Depends(get_db)):
-    """Wipe all leads + all related records. Useful for resetting between tests."""
-    # Order matters: child tables first
+    """Wipe all leads + all related records."""
     await db.execute(delete(RMHandoff))
     await db.execute(delete(WhatsAppMessage))
     await db.execute(delete(Objection))
@@ -162,13 +196,11 @@ async def get_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/{lead_id}", status_code=200)
 async def delete_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete a single lead and all its calls, scores, objections, WhatsApp records, handoffs."""
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(404, "Lead not found")
 
-    # Find all calls for this lead, then cascade
     call_ids = (await db.execute(select(Call.id).where(Call.lead_id == lead_id))).scalars().all()
     if call_ids:
         await db.execute(delete(RMHandoff).where(RMHandoff.call_id.in_(call_ids)))

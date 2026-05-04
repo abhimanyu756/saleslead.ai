@@ -29,6 +29,7 @@ export const api = {
   createLead: (data: LeadCreate) => post<Lead>("/leads/", data),
   deleteLead: (id: string) => del<{ deleted: string }>(`/leads/${id}`),
   deleteAllLeads: () => del<{ deleted: number }>(`/leads/all`),
+  batchCall: () => post<{ message: string; triggered: number }>("/leads/batch-call", {}),
 
   // Calls
   getCalls: () => get<Call[]>("/calls/"),
