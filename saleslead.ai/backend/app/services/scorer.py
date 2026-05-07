@@ -8,7 +8,13 @@ import google.generativeai as genai
 from app.config import settings
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
-_model = genai.GenerativeModel("gemini-2.5-flash")
+_model = genai.GenerativeModel(
+    "gemini-2.5-flash-lite",
+    generation_config={
+        "temperature": 0.3,
+        "response_mime_type": "application/json",
+    },
+)
 
 ALL_5_OBJECTIONS = [
     "I'm already with another broker",
@@ -19,80 +25,42 @@ ALL_5_OBJECTIONS = [
 ]
 
 _SCORER_SYSTEM = """\
-You are an expert sales call analyser for Rupeezy's Authorized Partner (AP) program.
-Analyse the transcript carefully and output ONLY valid JSON. No markdown, no explanation.
+Analyse a Rupeezy AP-program sales call. Output ONLY this JSON, no prose, no markdown.
 
-## Context
-Rupeezy AP program offers: Zero joining fee, 100% brokerage share, Daily payouts.
-The agent's job is to pitch this program, handle objections, and close with a CTA.
+Rupeezy AP offers: zero joining fee, 100% brokerage, daily payouts.
 
-## Scoring Guidelines
+Scoring (0-10):
+- interest: 1-3 dismissive/cold, 4-5 polite, 6-7 engaged/asking, 8-10 excited/ready
+- readiness: 1-3 no network/not ready, 4-5 hesitant, 6-7 open, 8-10 ready to sign up
+- network_size: small (<10), medium (10-50), large (50+); infer if not stated
 
-### Interest Score (1-10)
-1-3: Lead was clearly not interested, dismissive, or cut the call short
-4-5: Lead listened politely but showed minimal engagement
-6-7: Lead asked questions, showed curiosity, engaged meaningfully
-8-9: Lead was excited, asked about next steps, very positive
-10: Lead agreed to sign up immediately
+Classification:
+- Hot = interest >= 7 AND readiness >= 6
+- Warm = interest >= 5 OR readiness >= 4
+- Cold = otherwise
 
-### Readiness Score (1-10)
-1-3: Lead has no contacts or is not at all ready to join
-4-5: Lead has some contacts but is hesitant
-6-7: Lead has a decent network and is open to joining
-8-9: Lead is ready to sign up, just needs a nudge
-10: Lead signed up during the call
+Standard objection labels (use exactly):
+"I'm already with another broker", "I don't have enough contacts",
+"What if my clients face issues — who handles support?", "Is Rupeezy trustworthy?",
+"I'll think about it / call me later"
 
-### Network Size
-- small: 0-10 contacts mentioned
-- medium: 10-50 contacts mentioned
-- large: 50+ contacts mentioned
-- If not mentioned, infer from context (profession, experience)
-
-### Classification Rules
-- Hot  = interest_score >= 7 AND readiness_score >= 6
-- Warm = interest_score >= 5 OR readiness_score >= 4
-- Cold = everything else
-
-## Summary Guidelines
-Write a detailed 3-4 sentence summary covering:
-1. How the call went overall (tone, engagement level)
-2. Key points discussed and lead's reaction
-3. Objections raised and how they were handled
-4. What was agreed at the end (CTA outcome)
-
-## Schema
+Schema:
 {
-  "interest_score": <1-10 float>,
-  "readiness_score": <1-10 float>,
-  "network_size": "small" | "medium" | "large",
-  "network_evidence": ["<exact quote from transcript showing network size>"],
-  "interest_evidence": ["<exact quote showing interest level>"],
-  "readiness_evidence": ["<exact quote showing readiness>"],
-  "classification": "Hot" | "Warm" | "Cold",
-  "cta_outcome": "signed_up" | "rm_scheduled" | "whatsapp_sent" | "no_action",
-  "benefits_covered": ["Zero joining fee", "100% brokerage share", "Daily payouts"],
-  "objections": [
-    {
-      "type": "<one of the 5 standard objection strings>",
-      "raised_at_turn": <int, 1-indexed turn number>,
-      "resolution_status": "resolved" | "partial" | "unresolved"
-    }
-  ],
-  "summary": "<detailed 3-4 sentence summary of the full call>",
-  "recommended_next_action": "<specific actionable next step — e.g. 'RM to call within 2 hours', 'Send WhatsApp and follow up in 24h', 'Re-engage after 60 days'>",
-  "recommended_opening_line": "<personalised opening line for RM based on call context, or 'N/A — signed up' if lead signed up>",
-  "language_used": "<primary language used in the call — Hindi/English/Hinglish/Tamil/Telugu/Kannada/Marathi/Gujarati/Bengali>"
+  "interest_score": <0-10>,
+  "readiness_score": <0-10>,
+  "network_size": "small"|"medium"|"large",
+  "interest_evidence": ["<short quote>"],
+  "readiness_evidence": ["<short quote>"],
+  "network_evidence": ["<short quote>"],
+  "classification": "Hot"|"Warm"|"Cold",
+  "cta_outcome": "signed_up"|"rm_scheduled"|"whatsapp_sent"|"no_action",
+  "benefits_covered": [],
+  "objections": [{"type":"<exact label above>","raised_at_turn":<int>,"resolution_status":"resolved"|"partial"|"unresolved"}],
+  "summary": "<2 sentences>",
+  "recommended_next_action": "<short>",
+  "recommended_opening_line": "<RM opener or 'N/A'>",
+  "language_used": "<Hindi|English|Hinglish|Tamil|Telugu|Kannada|Marathi|Gujarati|Bengali>"
 }
-
-## Standard Objection Types (use exactly these strings)
-1. "I'm already with another broker"
-2. "I don't have enough contacts"
-3. "What if my clients face issues — who handles support?"
-4. "Is Rupeezy trustworthy?"
-5. "I'll think about it / call me later"
-
-Only include objections that were actually raised in the transcript.
-If an objection was raised in a different language, still map it to the closest standard type.
 """
 
 

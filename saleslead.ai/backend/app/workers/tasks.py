@@ -1,7 +1,7 @@
 """RQ async post-call pipeline: score → classify → store → route."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -63,8 +63,22 @@ async def _process_call_async(call_id: str) -> None:
         call.language_used = scored.get("language_used", lead.language_pref)
         call.processed = True
 
-        # Update lead classification
+        # Update lead classification + schedule re-engagement for Cold leads
         lead.current_classification = scored["classification"]
+        if scored["classification"] == "Cold":
+            # Auto-schedule re-engagement: 30 days for "polite but disengaged",
+            # 60 days for "clearly not interested", 90 days for "cut call"
+            interest = scored.get("interest_score", 0)
+            turns = len(call.transcript or [])
+            if turns <= 2:
+                delta = timedelta(days=90)  # cut call early — leave alone longer
+            elif interest <= 3:
+                delta = timedelta(days=60)  # clearly not interested
+            else:
+                delta = timedelta(days=30)  # polite but disengaged
+            lead.next_call_at = datetime.now(timezone.utc) + delta
+        else:
+            lead.next_call_at = None  # not Cold; clear any stale schedule
 
         await db.commit()
 

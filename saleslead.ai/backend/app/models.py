@@ -43,6 +43,7 @@ class Lead(Base):
     source: Mapped[Optional[str]] = mapped_column(String(100))
     broker_affiliation: Mapped[Optional[str]] = mapped_column(String(200))
     current_classification: Mapped[str] = mapped_column(String(20), default="Uncalled")
+    next_call_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))  # for Cold lead re-engagement
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -69,6 +70,7 @@ class Call(Base):
     recommended_opening_line: Mapped[Optional[str]] = mapped_column(Text)
     benefits_covered: Mapped[list] = mapped_column(JSONB, default=list)
     transcript: Mapped[list] = mapped_column(JSONB, default=list)
+    audio_path: Mapped[Optional[str]] = mapped_column(String(500))  # local relative path for playback
 
     processed: Mapped[bool] = mapped_column(Boolean, default=False)
 

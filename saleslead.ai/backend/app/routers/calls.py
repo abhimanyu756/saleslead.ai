@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,13 @@ from app.models import Call, Lead, WhatsAppMessage
 from app.schemas import CallOut, ClickTrack
 
 router = APIRouter(prefix="/calls", tags=["calls"])
+
+
+VALID_OUTCOMES = {"signed_up", "rm_scheduled", "whatsapp_sent", "follow_up", "lost", "no_action"}
+
+
+class OutcomeUpdate(BaseModel):
+    cta_outcome: str
 
 
 async def _load_call(call_id: str, db: AsyncSession) -> Call:
@@ -47,6 +55,24 @@ async def list_calls(db: AsyncSession = Depends(get_db)):
 @router.get("/{call_id}", response_model=CallOut)
 async def get_call(call_id: str, db: AsyncSession = Depends(get_db)):
     return await _load_call(call_id, db)
+
+
+@router.patch("/{call_id}/outcome", response_model=dict)
+async def update_call_outcome(
+    call_id: str,
+    body: OutcomeUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """RM-driven update: mark call outcome (signed_up, lost, follow_up, etc.)."""
+    if body.cta_outcome not in VALID_OUTCOMES:
+        raise HTTPException(400, f"cta_outcome must be one of {sorted(VALID_OUTCOMES)}")
+    result = await db.execute(select(Call).where(Call.id == call_id))
+    call = result.scalar_one_or_none()
+    if not call:
+        raise HTTPException(404, "Call not found")
+    call.cta_outcome = body.cta_outcome
+    await db.commit()
+    return {"call_id": call_id, "cta_outcome": body.cta_outcome}
 
 
 @router.post("/track-click", response_model=dict)

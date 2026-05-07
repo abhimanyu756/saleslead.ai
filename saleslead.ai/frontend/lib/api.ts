@@ -22,6 +22,18 @@ async function del<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+export const AUDIO_BASE = BASE_URL;
+
 export const api = {
   // Leads
   getLeads: () => get<Lead[]>("/leads/"),
@@ -34,6 +46,8 @@ export const api = {
   // Calls
   getCalls: () => get<Call[]>("/calls/"),
   getCall: (id: string) => get<Call>(`/calls/${id}`),
+  updateCallOutcome: (id: string, outcome: string) =>
+    patch<{ call_id: string; cta_outcome: string }>(`/calls/${id}/outcome`, { cta_outcome: outcome }),
 
   // Dashboard
   getDashboard: () => get<DashboardStats>("/dashboard/"),
@@ -49,6 +63,7 @@ export interface Lead {
   source: string | null;
   broker_affiliation: string | null;
   current_classification: string;
+  next_call_at: string | null;
   created_at: string;
 }
 
@@ -80,6 +95,9 @@ export interface WhatsApp {
   link: string;
   language: string;
   sent_at: string;
+  delivered_at: string | null;
+  read_at: string | null;
+  replied_at: string | null;
   clicked_at: string | null;
 }
 
@@ -97,6 +115,7 @@ export interface Call {
   recommended_opening_line: string | null;
   benefits_covered: string[];
   transcript: { speaker: string; text: string; timestamp: string }[];
+  audio_path: string | null;
   score: Score | null;
   objections: Objection[];
   whatsapp: WhatsApp | null;
@@ -112,4 +131,7 @@ export interface DashboardStats {
   conversion_rate: number;
   funnel: { stage: string; value: number }[];
   daily_activity: { date: string; calls: number; hot: number }[];
+  by_source: { source: string; total: number; hot: number; hot_rate: number }[];
+  by_language: { language: string; total: number; hot: number; hot_rate: number }[];
+  upcoming_reengagement: number;
 }

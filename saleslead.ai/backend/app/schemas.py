@@ -22,6 +22,7 @@ class LeadOut(BaseModel):
     source: Optional[str]
     broker_affiliation: Optional[str]
     current_classification: str
+    next_call_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -81,6 +82,7 @@ class CallOut(BaseModel):
     recommended_opening_line: Optional[str]
     benefits_covered: list[str]
     transcript: list[dict]
+    audio_path: Optional[str] = None
     score: Optional[ScoreOut]
     objections: list[ObjectionOut]
     whatsapp: Optional[WhatsAppOut]
@@ -125,6 +127,9 @@ class DashboardStats(BaseModel):
     conversion_rate: float
     funnel: list[dict]
     daily_activity: list[dict]
+    by_source: list[dict] = []
+    by_language: list[dict] = []
+    upcoming_reengagement: int = 0
 
 
 # ── WhatsApp click tracking ───────────────────────────────────────────────────

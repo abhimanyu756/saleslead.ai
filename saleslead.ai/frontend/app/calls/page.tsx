@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, Call } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { api, Call, Lead } from "@/lib/api";
 import Link from "next/link";
 import { Clock, PhoneCall } from "lucide-react";
 
@@ -13,10 +13,22 @@ function classificationBadge(c: string) {
 
 export default function CallsPage() {
   const [calls, setCalls] = useState<Call[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
 
   useEffect(() => {
-    api.getCalls().then(setCalls).catch(console.error);
+    Promise.all([api.getCalls(), api.getLeads()])
+      .then(([c, l]) => {
+        setCalls(c);
+        setLeads(l);
+      })
+      .catch(console.error);
   }, []);
+
+  const leadById = useMemo(() => {
+    const m = new Map<string, Lead>();
+    for (const l of leads) m.set(l.id, l);
+    return m;
+  }, [leads]);
 
   return (
     <div className="p-6 space-y-5">
@@ -45,9 +57,14 @@ export default function CallsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {calls.map((call) => (
+            {calls.map((call) => {
+              const lead = leadById.get(call.lead_id);
+              return (
               <tr key={call.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-900">{call.lead_id}</td>
+                <td className="px-4 py-3">
+                  <p className="font-medium text-slate-900">{lead?.name ?? "Unknown lead"}</p>
+                  <p className="text-xs text-slate-400 font-mono">{lead?.phone ?? call.lead_id}</p>
+                </td>
                 <td className="px-4 py-3 text-slate-500">{call.language_used}</td>
                 <td className="px-4 py-3 text-slate-500 flex items-center gap-1">
                   <Clock size={12} className="text-slate-400" />
@@ -68,7 +85,8 @@ export default function CallsPage() {
                   <Link href={`/calls/${call.id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {calls.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-400">

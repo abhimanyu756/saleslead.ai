@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Flame, ChevronDown, ChevronUp, Phone, MessageCircle, User, Clock, Network } from "lucide-react";
+import { Flame, ChevronDown, ChevronUp, MessageCircle, User, Clock, Network, CheckCircle, XCircle, RefreshCw, Phone, PhoneCall } from "lucide-react";
 import { api, Lead, Call } from "@/lib/api";
 import Link from "next/link";
 
@@ -32,10 +32,22 @@ type HotItem = { lead: Lead; call: Call };
 export default function HotQueuePage() {
   const [items, setItems] = useState<HotItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [savingOutcome, setSavingOutcome] = useState<string | null>(null);
   const [calledIds, setCalledIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    Promise.all([api.getLeads(), api.getCalls()]).then(([leads, calls]) => {
+  function handleCallLead(callId: string, leadName: string, phone: string, openingLine: string | null) {
+    const opener = openingLine && openingLine !== "N/A" && openingLine !== "N/A — signed up."
+      ? `\n\nSuggested opening line:\n"${openingLine}"`
+      : "";
+    const proceed = window.confirm(`📞 Dialing ${leadName}\n${phone}${opener}\n\n(Demo: no real call placed)`);
+    if (proceed) {
+      setCalledIds((prev) => new Set(prev).add(callId));
+    }
+  }
+
+  async function loadData() {
+    try {
+      const [leads, calls] = await Promise.all([api.getLeads(), api.getCalls()]);
       const hotCalls = calls.filter((c) => c.classification === "Hot");
       const result: HotItem[] = [];
       for (const call of hotCalls) {
@@ -43,9 +55,33 @@ export default function HotQueuePage() {
         if (lead) result.push({ lead, call });
       }
       setItems(result);
-      if (result.length > 0) setExpanded(result[0].call.id);
-    }).catch(console.error);
+      setExpanded((prev) => prev ?? result[0]?.call.id ?? null);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+    const id = setInterval(loadData, 5000);
+    return () => clearInterval(id);
   }, []);
+
+  async function setOutcome(callId: string, outcome: string) {
+    setSavingOutcome(callId);
+    try {
+      await api.updateCallOutcome(callId, outcome);
+      setItems((prev) =>
+        prev.map((it) =>
+          it.call.id === callId ? { ...it, call: { ...it.call, cta_outcome: outcome } } : it
+        )
+      );
+    } catch (e) {
+      alert("Failed to update outcome");
+    } finally {
+      setSavingOutcome(null);
+    }
+  }
 
   return (
     <div className="p-6 space-y-5">
@@ -72,7 +108,6 @@ export default function HotQueuePage() {
       <div className="space-y-4">
         {items.map(({ lead, call }) => {
           const isExpanded = expanded === call.id;
-          const isCalled = calledIds.has(call.id);
 
           return (
             <div key={call.id} className={`bg-white rounded-xl border transition-shadow ${isExpanded ? "border-amber-200 shadow-md" : "border-slate-100 hover:border-slate-200"}`}>
@@ -170,19 +205,68 @@ export default function HotQueuePage() {
                     </div>
                   )}
 
-                  <div className="flex gap-3 pt-1">
-                    <button
-                      onClick={() => setCalledIds(new Set([...calledIds, call.id]))}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        isCalled ? "bg-emerald-100 text-emerald-700 cursor-default" : "bg-amber-500 text-white hover:bg-amber-600"
-                      }`}
-                    >
-                      <Phone size={14} />
-                      {isCalled ? "Called ✓" : "Call Lead"}
-                    </button>
-                    <Link href={`/calls/${call.id}`} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">
-                      <MessageCircle size={14} /> View Full Transcript
-                    </Link>
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">RM Action</p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        onClick={() => handleCallLead(call.id, lead.name, lead.phone, call.recommended_opening_line)}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                          calledIds.has(call.id)
+                            ? "bg-emerald-100 text-emerald-700 cursor-default"
+                            : "bg-amber-500 text-white hover:bg-amber-600 shadow-sm"
+                        }`}
+                      >
+                        {calledIds.has(call.id) ? (
+                          <>
+                            <PhoneCall size={13} /> Called ✓
+                          </>
+                        ) : (
+                          <>
+                            <Phone size={13} /> Call Lead
+                          </>
+                        )}
+                      </button>
+                      <span className="w-px bg-slate-200 mx-1" />
+                      <button
+                        onClick={() => setOutcome(call.id, "signed_up")}
+                        disabled={savingOutcome === call.id}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          call.cta_outcome === "signed_up"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                        }`}
+                      >
+                        <CheckCircle size={13} /> Signed Up
+                      </button>
+                      <button
+                        onClick={() => setOutcome(call.id, "follow_up")}
+                        disabled={savingOutcome === call.id}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          call.cta_outcome === "follow_up"
+                            ? "bg-amber-500 text-white"
+                            : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                        }`}
+                      >
+                        <RefreshCw size={13} /> Follow Up
+                      </button>
+                      <button
+                        onClick={() => setOutcome(call.id, "lost")}
+                        disabled={savingOutcome === call.id}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          call.cta_outcome === "lost"
+                            ? "bg-rose-600 text-white"
+                            : "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200"
+                        }`}
+                      >
+                        <XCircle size={13} /> Lost
+                      </button>
+                      <Link
+                        href={`/calls/${call.id}`}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50"
+                      >
+                        <MessageCircle size={13} /> Full Transcript
+                      </Link>
+                    </div>
                   </div>
                 </div>
               )}

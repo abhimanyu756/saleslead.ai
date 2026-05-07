@@ -5,12 +5,15 @@ Two webhooks:
   POST /voice/post-call — called by ElevenLabs when call ends (HMAC-signed)
 """
 
+import base64
 import hashlib
 import hmac
 import json
 import logging
+import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import google.generativeai as genai
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -37,11 +40,15 @@ def _verify_elevenlabs_signature(body: bytes, signature_header: str, secret: str
     Header format: 't=<unix_ts>,v0=<hex_signature>'
     Signed payload: '<unix_ts>.<raw_body>'
     """
+    if not signature_header:
+        log.warning("[post-call] no signature header in request")
+        return False
     try:
         parts = dict(p.split("=", 1) for p in signature_header.split(","))
         ts = int(parts["t"])
         sig = parts["v0"]
     except (ValueError, KeyError):
+        log.warning(f"[post-call] malformed signature header: {signature_header[:80]!r}")
         return False
     if abs(time.time() - ts) > max_age_s:
         log.warning(f"[post-call] signature timestamp out of window: {ts}")
@@ -51,7 +58,13 @@ def _verify_elevenlabs_signature(body: bytes, signature_header: str, secret: str
         f"{ts}.{body.decode()}".encode(),
         hashlib.sha256,
     ).hexdigest()
-    return hmac.compare_digest(expected, sig)
+    ok = hmac.compare_digest(expected, sig)
+    if not ok:
+        log.warning(
+            f"[post-call] HMAC mismatch | secret_len={len(secret)} secret_start={secret[:6]!r} | "
+            f"got_sig={sig[:16]}... expected={expected[:16]}... | ts={ts} body_len={len(body)}"
+        )
+    return ok
 
 
 @router.post("/llm")
@@ -139,9 +152,44 @@ async def post_call_webhook(
         envelope = json.loads(raw)
     except json.JSONDecodeError:
         raise HTTPException(400, "Invalid JSON")
-    data = envelope.get("data", envelope)  # tolerate either nested or flat
 
+    event_type = envelope.get("type", "")
+    data = envelope.get("data", envelope)
     conversation_id = data.get("conversation_id")
+
+    # ElevenLabs sends TWO webhooks per call: transcription + audio.
+    # Handle the audio one separately — match Call by conversation_id and save mp3 file.
+    if event_type == "post_call_audio":
+        b64 = data.get("full_audio")
+        if not b64 or not conversation_id:
+            log.info("[post-call/audio] missing audio or conversation_id, skipping")
+            return {"status": "ignored", "reason": "audio webhook missing fields"}
+
+        AUDIO_DIR = Path("/app/audio_files")
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            audio_bytes = base64.b64decode(b64)
+        except Exception as e:
+            log.warning(f"[post-call/audio] base64 decode failed: {e}")
+            return {"status": "ignored", "reason": "decode failed"}
+
+        filename = f"{conversation_id}.mp3"
+        filepath = AUDIO_DIR / filename
+        filepath.write_bytes(audio_bytes)
+
+        # Attach to existing Call (transcription webhook usually arrives first)
+        result = await db.execute(
+            select(Call).where(Call.elevenlabs_conversation_id == conversation_id)
+        )
+        call = result.scalar_one_or_none()
+        if call:
+            call.audio_path = f"/audio/{filename}"
+            await db.commit()
+            log.info(f"[post-call/audio] saved {len(audio_bytes)} bytes for call {call.id}")
+        else:
+            log.info(f"[post-call/audio] call not yet saved for {conversation_id}, audio file exists at {filepath}")
+        return {"status": "ok", "audio_path": f"/audio/{filename}"}
+
     metadata = data.get("metadata", {}) or {}
     transcript_raw = data.get("transcript", []) or []
 
@@ -179,17 +227,46 @@ async def post_call_webhook(
         for t in transcript_raw
     ]
 
+    # Compute call duration. ElevenLabs gives us either:
+    #   - data.metadata.call_duration_secs (preferred, exact)
+    #   - data.metadata.start_time_unix_secs + envelope.event_timestamp (fallback)
+    duration_s = int(metadata.get("call_duration_secs") or 0)
+    if not duration_s:
+        start_ts = metadata.get("start_time_unix_secs")
+        end_ts = envelope.get("event_timestamp") or int(time.time())
+        if start_ts:
+            duration_s = max(0, int(end_ts) - int(start_ts))
+
+    # Compute started_at and ended_at from the same data so the dashboard timeline is accurate
+    start_ts = metadata.get("start_time_unix_secs")
+    if start_ts:
+        started_at = datetime.fromtimestamp(int(start_ts), tz=timezone.utc)
+    else:
+        started_at = datetime.now(timezone.utc) - timedelta(seconds=duration_s)
+    ended_at = started_at + timedelta(seconds=duration_s) if duration_s else datetime.now(timezone.utc)
+
+    # Check if audio already arrived (rare, but possible)
+    audio_filename = f"{conversation_id}.mp3"
+    audio_path = (
+        f"/audio/{audio_filename}"
+        if (Path("/app/audio_files") / audio_filename).exists()
+        else None
+    )
+
     call = Call(
         lead_id=lead_id,
         elevenlabs_conversation_id=conversation_id,
-        ended_at=datetime.now(timezone.utc),
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_s=duration_s,
         transcript=transcript,
+        audio_path=audio_path,
     )
     db.add(call)
     await db.commit()
     await db.refresh(call)
 
-    log.info(f"[post-call] saved call {call.id}, enqueueing for processing")
+    log.info(f"[post-call] saved call {call.id} ({duration_s}s), enqueueing for processing")
     background_tasks.add_task(_enqueue_processing, call.id)
     return {"call_id": call.id, "status": "queued"}
 

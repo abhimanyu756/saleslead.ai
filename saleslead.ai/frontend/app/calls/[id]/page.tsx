@@ -1,8 +1,8 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { api, Lead, Call } from "@/lib/api";
-import { ArrowLeft, Clock, Globe, User, ChevronDown, ChevronUp, CheckCircle, AlertCircle, MinusCircle, Circle, MessageCircle, Send, ExternalLink, Zap } from "lucide-react";
+import { api, AUDIO_BASE, Lead, Call } from "@/lib/api";
+import { ArrowLeft, Clock, Globe, User, ChevronDown, ChevronUp, CheckCircle, AlertCircle, MinusCircle, Circle, MessageCircle, Send, ExternalLink, Zap, Headphones } from "lucide-react";
 import Link from "next/link";
 
 const ALL_5_OBJECTIONS = [
@@ -145,7 +145,32 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
             <p className="text-sm text-slate-700">{call.recommended_next_action}</p>
           </div>
         )}
+
+        {call.recommended_opening_line && call.recommended_opening_line !== "N/A" && call.recommended_opening_line !== "N/A — signed up." && (
+          <div className="mt-4 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Recommended Opening Line for RM</p>
+            <p className="text-sm text-amber-900 italic">"{call.recommended_opening_line}"</p>
+          </div>
+        )}
       </div>
+
+      {call.audio_path && (
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Headphones size={16} className="text-indigo-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Call Recording</h2>
+            <span className="text-xs text-slate-400">Listen to the full conversation</span>
+          </div>
+          <audio
+            controls
+            preload="metadata"
+            className="w-full"
+            src={`${AUDIO_BASE}${call.audio_path}`}
+          >
+            Your browser doesn't support audio playback.
+          </audio>
+        </div>
+      )}
 
       <div className="grid grid-cols-5 gap-4">
         {/* Scores */}

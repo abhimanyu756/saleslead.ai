@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +13,12 @@ from app.database import get_db
 from app.models import Call, WhatsAppMessage
 from app.routers import auth, calls, dashboard, leads, voice, whatsapp
 
+# Ensure audio dir exists before mounting
+AUDIO_DIR = Path("/app/audio_files")
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(title="SalesLead.ai", version="1.0.0")
+app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
 
 app.add_middleware(
     CORSMiddleware,

@@ -7,86 +7,50 @@ from app.config import settings
 GRAPH_BASE = "https://graph.facebook.com/v22.0"
 
 TEMPLATES = {
-    "Hindi": (
-        "नमस्ते {name} जी 🙏\n\n"
-        "अभी-अभी आपसे Rupeezy AP Program के बारे में बात हुई।\n\n"
-        "✅ *Zero joining fee* — कोई upfront cost नहीं\n"
-        "✅ *100% brokerage share* — जो कमाओ, वो पूरा तुम्हारा\n"
-        "✅ *Daily payouts* — हर रोज़ payment, monthly नहीं\n\n"
-        "👇 अभी sign up करें — बस 2 मिनट लगेगा:\n"
-        "{link}\n\n"
-        "कोई सवाल हो तो यहीं reply करें, main help करूंगी! 😊"
-    ),
     "English": (
-        "Hi {name} 👋\n\n"
-        "Great speaking with you about the *Rupeezy Authorized Partner Program*!\n\n"
-        "Here's a quick recap of what we offer:\n"
-        "✅ *Zero joining fee* — no upfront cost\n"
-        "✅ *100% brokerage share* — you keep everything you earn\n"
-        "✅ *Daily payouts* — get paid every day, not monthly\n\n"
-        "👇 Sign up in just 2 minutes:\n"
-        "{link}\n\n"
-        "Reply here if you have any questions — happy to help! 😊"
+        "Hi {name}, this is Priya from Rupeezy. Thanks for taking my call earlier — really appreciated the time. "
+        "Just sending a quick note so you have my number — feel free to reply here if anything comes up "
+        "or if you'd like me to share the partner details. Have a good day."
+    ),
+    "Hindi": (
+        "Namaste {name} ji, main Priya bol rahi hoon Rupeezy se. Aapse abhi baat hui thi — time dene ke liye shukriya. "
+        "Bas yeh chhota sa note bhej rahi hoon ki mera number aapke paas rahe. "
+        "Koi sawaal ho ya partner details chahiye toh yahin reply kar dijiye."
     ),
     "Hinglish": (
-        "Hi {name} 😊\n\n"
-        "Abhi baat hui thi Rupeezy AP Program ke baare mein!\n\n"
-        "✅ *Zero joining fee* — koi cost nahi\n"
-        "✅ *100% brokerage* — poora aapka\n"
-        "✅ *Daily payouts* — roz milega, monthly nahi\n\n"
-        "👇 2 minute mein sign up karo:\n"
-        "{link}\n\n"
-        "Koi bhi sawaal ho toh yahan reply karo! 🙌"
+        "Hi {name}, Priya here from Rupeezy. Abhi jo baat hui uske liye thanks. "
+        "Bas yeh message bhej rahi hoon taaki mera number aapke paas rahe. "
+        "Koi doubt ho ya partner details chahiye toh yahin reply kar dijiye."
     ),
     "Tamil": (
-        "வணக்கம் {name} 🙏\n\n"
-        "Rupeezy AP Program பற்றி பேசினோம்!\n\n"
-        "✅ *Zero joining fee*\n"
-        "✅ *100% brokerage share*\n"
-        "✅ *Daily payouts*\n\n"
-        "👇 Sign up செய்யுங்கள் — 2 நிமிடம் மட்டுமே:\n"
-        "{link}\n\n"
-        "கேள்விகள் இருந்தால் இங்கே reply செய்யுங்கள்! 😊"
+        "வணக்கம் {name}, நான் Priya, Rupeezy-லிருந்து. சற்றுமுன் பேசியதற்கு நன்றி. "
+        "என் number உங்களிடம் இருக்கட்டும் என்று ஒரு சிறிய message அனுப்புகிறேன். "
+        "கேள்விகள் இருந்தால் அல்லது partner details வேண்டுமென்றால் இங்கேயே reply பண்ணுங்க."
     ),
     "Telugu": (
-        "నమస్కారం {name} 🙏\n\n"
-        "Rupeezy AP Program గురించి మాట్లాడాము!\n\n"
-        "✅ *Zero joining fee*\n"
-        "✅ *100% brokerage share*\n"
-        "✅ *Daily payouts*\n\n"
-        "👇 Sign up చేయండి — కేవలం 2 నిమిషాలు:\n"
-        "{link}\n\n"
-        "ఏమైనా అడగాలంటే ఇక్కడ reply చేయండి! 😊"
+        "నమస్కారం {name}, నేను Priya, Rupeezy నుండి. ఇప్పుడే మాట్లాడినందుకు ధన్యవాదాలు. "
+        "నా number మీ దగ్గర ఉండాలని ఈ చిన్న message పంపుతున్నాను. "
+        "ఏదైనా doubt ఉన్నా లేదా partner details కావాలంటే ఇక్కడే reply చేయండి."
     ),
     "Kannada": (
-        "ನಮಸ್ಕಾರ {name} 🙏\n\n"
-        "Rupeezy AP Program ಬಗ್ಗೆ ಮಾತನಾಡಿದೆವು!\n\n"
-        "✅ *Zero joining fee*\n"
-        "✅ *100% brokerage share*\n"
-        "✅ *Daily payouts*\n\n"
-        "👇 Sign up ಮಾಡಿ — ಕೇವಲ 2 ನಿಮಿಷ:\n"
-        "{link}\n\n"
-        "ಯಾವುದೇ ಪ್ರಶ್ನೆ ಇದ್ದರೆ ಇಲ್ಲಿ reply ಮಾಡಿ! 😊"
+        "ನಮಸ್ಕಾರ {name}, ನಾನು Priya, Rupeezy ನಿಂದ. ಸ್ವಲ್ಪ ಸಮಯದ ಹಿಂದೆ ಮಾತನಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು. "
+        "ನನ್ನ number ನಿಮ್ಮ ಬಳಿ ಇರಲಿ ಎಂದು ಈ ಸಣ್ಣ message ಕಳಿಸುತ್ತಿದ್ದೇನೆ. "
+        "ಯಾವುದೇ ಪ್ರಶ್ನೆ ಇದ್ದರೆ ಅಥವಾ partner details ಬೇಕಾದರೆ ಇಲ್ಲೇ reply ಮಾಡಿ."
     ),
     "Marathi": (
-        "नमस्कार {name} 🙏\n\n"
-        "Rupeezy AP Program बद्दल बोललो आपण!\n\n"
-        "✅ *Zero joining fee*\n"
-        "✅ *100% brokerage share*\n"
-        "✅ *Daily payouts*\n\n"
-        "👇 Sign up करा — फक्त 2 मिनिटे:\n"
-        "{link}\n\n"
-        "काही प्रश्न असतील तर इथे reply करा! 😊"
+        "नमस्कार {name}, मी Priya, Rupeezy कडून. आत्ता बोललो त्याबद्दल धन्यवाद. "
+        "माझा number तुमच्याकडे राहावा म्हणून हा छोटा message पाठवत आहे. "
+        "काही प्रश्न असेल किंवा partner details हवे असतील तर इथेच reply करा."
     ),
     "Gujarati": (
-        "નમસ્તે {name} 🙏\n\n"
-        "Rupeezy AP Program વિશે વાત થઈ!\n\n"
-        "✅ *Zero joining fee*\n"
-        "✅ *100% brokerage share*\n"
-        "✅ *Daily payouts*\n\n"
-        "👇 Sign up કરો — માત્ર 2 મિનિટ:\n"
-        "{link}\n\n"
-        "કોઈ સવાલ હોય તો અહીં reply કરો! 😊"
+        "નમસ્તે {name}, હું Priya, Rupeezy થી. હમણાં વાત કરી તે બદલ આભાર. "
+        "મારો number તમારી પાસે રહે એ માટે આ નાનો message મોકલી રહી છું. "
+        "કોઈ સવાલ હોય કે partner details જોઈએ તો અહીં જ reply કરજો."
+    ),
+    "Bengali": (
+        "নমস্কার {name}, আমি Priya, Rupeezy থেকে। একটু আগে কথা বলার জন্য ধন্যবাদ। "
+        "শুধু এই ছোট্ট message পাঠাচ্ছি যাতে আমার number আপনার কাছে থাকে। "
+        "কোনো প্রশ্ন থাকলে বা partner details দরকার হলে এখানেই reply করবেন।"
     ),
 }
 

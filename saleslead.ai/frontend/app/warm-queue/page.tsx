@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageCircle, CheckCircle, Clock, ExternalLink, ChevronDown, ChevronUp, Send, User } from "lucide-react";
+import { MessageCircle, CheckCircle, Clock, ExternalLink, ChevronDown, ChevronUp, Send, User, Phone, PhoneCall } from "lucide-react";
 import { api, Lead, Call } from "@/lib/api";
 import Link from "next/link";
 
@@ -17,18 +17,35 @@ type WarmItem = { lead: Lead; call: Call };
 export default function WarmQueuePage() {
   const [items, setItems] = useState<WarmItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [calledIds, setCalledIds] = useState<Set<string>>(new Set());
+
+  function handleCallLead(callId: string, leadName: string, phone: string, openingLine: string | null) {
+    const opener = openingLine && openingLine !== "N/A" && openingLine !== "N/A — signed up."
+      ? `\n\nSuggested opening line:\n"${openingLine}"`
+      : "";
+    const proceed = window.confirm(`📞 Dialing ${leadName}\n${phone}${opener}\n\n(Demo: no real call placed)`);
+    if (proceed) {
+      setCalledIds((prev) => new Set(prev).add(callId));
+    }
+  }
 
   useEffect(() => {
-    Promise.all([api.getLeads(), api.getCalls()]).then(([leads, calls]) => {
-      const warmCalls = calls.filter((c) => c.classification === "Warm");
-      const result: WarmItem[] = [];
-      for (const call of warmCalls) {
-        const lead = leads.find((l) => l.id === call.lead_id);
-        if (lead) result.push({ lead, call });
-      }
-      setItems(result);
-      if (result.length > 0) setExpanded(result[0].call.id);
-    }).catch(console.error);
+    const load = () =>
+      Promise.all([api.getLeads(), api.getCalls()])
+        .then(([leads, calls]) => {
+          const warmCalls = calls.filter((c) => c.classification === "Warm");
+          const result: WarmItem[] = [];
+          for (const call of warmCalls) {
+            const lead = leads.find((l) => l.id === call.lead_id);
+            if (lead) result.push({ lead, call });
+          }
+          setItems(result);
+          setExpanded((prev) => prev ?? result[0]?.call.id ?? null);
+        })
+        .catch(console.error);
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
   }, []);
 
   const waSent = items.filter((i) => i.call.whatsapp).length;
@@ -166,6 +183,24 @@ export default function WarmQueuePage() {
                   )}
 
                   <div className="flex gap-3">
+                    <button
+                      onClick={() => handleCallLead(call.id, lead.name, lead.phone, call.recommended_opening_line)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        calledIds.has(call.id)
+                          ? "bg-emerald-100 text-emerald-700 cursor-default"
+                          : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+                      }`}
+                    >
+                      {calledIds.has(call.id) ? (
+                        <>
+                          <PhoneCall size={13} /> Called ✓
+                        </>
+                      ) : (
+                        <>
+                          <Phone size={13} /> Call Lead
+                        </>
+                      )}
+                    </button>
                     <Link href={`/calls/${call.id}`}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">
                       <MessageCircle size={13} /> View Transcript

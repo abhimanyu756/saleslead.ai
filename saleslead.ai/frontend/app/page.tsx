@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { TrendingUp, Users, Flame, PhoneCall, CheckCircle, Clock } from "lucide-react";
+import { TrendingUp, Users, Flame, PhoneCall, CheckCircle, Clock, Globe, Megaphone, Snowflake } from "lucide-react";
 import { api, DashboardStats, Lead } from "@/lib/api";
 import Link from "next/link";
 
@@ -18,8 +18,13 @@ export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
 
   useEffect(() => {
-    api.getDashboard().then(setStats).catch(console.error);
-    api.getLeads().then(setLeads).catch(console.error);
+    const load = () => {
+      api.getDashboard().then(setStats).catch(console.error);
+      api.getLeads().then(setLeads).catch(console.error);
+    };
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
   }, []);
 
   if (!stats) {
@@ -121,6 +126,87 @@ export default function DashboardPage() {
             <Bar dataKey="hot" name="Hot" fill="#f59e0b" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Conversion analytics */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* By Source */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Megaphone size={15} className="text-violet-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Conversion by Source</h2>
+          </div>
+          {stats.by_source.length === 0 ? (
+            <p className="text-xs text-slate-400">No data yet.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {stats.by_source.slice(0, 6).map((s) => (
+                <div key={s.source}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium text-slate-700 truncate">{s.source}</span>
+                    <span className="text-slate-500">
+                      {s.hot}/{s.total}
+                      <span className="ml-1.5 text-emerald-600 font-semibold">{s.hot_rate}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-violet-500 rounded-full"
+                      style={{ width: `${Math.min(100, s.hot_rate)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* By Language */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Globe size={15} className="text-sky-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Conversion by Language</h2>
+          </div>
+          {stats.by_language.length === 0 ? (
+            <p className="text-xs text-slate-400">No data yet.</p>
+          ) : (
+            <div className="space-y-2.5">
+              {stats.by_language.slice(0, 6).map((l) => (
+                <div key={l.language}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="font-medium text-slate-700">{l.language}</span>
+                    <span className="text-slate-500">
+                      {l.hot}/{l.total}
+                      <span className="ml-1.5 text-emerald-600 font-semibold">{l.hot_rate}%</span>
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-sky-500 rounded-full"
+                      style={{ width: `${Math.min(100, l.hot_rate)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Re-engagement */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Snowflake size={15} className="text-slate-500" />
+            <h2 className="text-sm font-semibold text-slate-900">Cold Re-engagement</h2>
+          </div>
+          <p className="text-3xl font-bold text-slate-900">{stats.upcoming_reengagement}</p>
+          <p className="text-xs text-slate-500 mt-0.5">cold leads due within 7 days</p>
+          <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+            Cold leads are auto-scheduled for follow-up at 30/60/90 days based on their drop-off pattern.
+          </p>
+          <Link href="/cold-queue" className="mt-3 inline-block text-xs text-indigo-600 hover:underline">
+            View cold queue →
+          </Link>
+        </div>
       </div>
 
       {/* Recent leads */}

@@ -7,6 +7,7 @@ import {
   Users,
   Flame,
   MessageCircle,
+  Snowflake,
   PhoneCall,
   Mic,
   Zap,
@@ -18,6 +19,7 @@ const NAV = [
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/hot-queue", label: "Hot Queue", icon: Flame },
   { href: "/warm-queue", label: "Warm Queue", icon: MessageCircle },
+  { href: "/cold-queue", label: "Cold Queue", icon: Snowflake },
   { href: "/calls", label: "All Calls", icon: PhoneCall },
   { href: "/voice", label: "Voice Demo", icon: Mic },
 ];

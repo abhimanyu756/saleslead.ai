@@ -29,7 +29,10 @@ export default function LeadsPage() {
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getLeads().then(setLeads).catch(console.error);
+    const load = () => api.getLeads().then(setLeads).catch(console.error);
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
   }, []);
 
   const filtered = leads.filter((l) => {

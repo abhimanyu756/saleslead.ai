@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -52,6 +52,57 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
             "hot": hot_day,
         })
 
+    # Conversion by source — only count leads that have at least one call
+    by_source_rows = (await db.execute(
+        select(
+            Lead.source,
+            func.count(Lead.id).label("total"),
+            func.sum(
+                case((Lead.current_classification == "Hot", 1), else_=0)
+            ).label("hot"),
+        )
+        .group_by(Lead.source)
+        .order_by(func.count(Lead.id).desc())
+    )).all()
+    by_source = [
+        {
+            "source": (r.source or "unknown"),
+            "total": int(r.total or 0),
+            "hot": int(r.hot or 0),
+            "hot_rate": round((int(r.hot or 0) / int(r.total)) * 100, 1) if r.total else 0.0,
+        }
+        for r in by_source_rows
+    ]
+
+    # Conversion by language used in actual calls
+    by_lang_rows = (await db.execute(
+        select(
+            Call.language_used,
+            func.count(Call.id).label("total"),
+            func.sum(
+                case((Call.classification == "Hot", 1), else_=0)
+            ).label("hot"),
+        )
+        .group_by(Call.language_used)
+        .order_by(func.count(Call.id).desc())
+    )).all()
+    by_language = [
+        {
+            "language": (r.language_used or "unknown"),
+            "total": int(r.total or 0),
+            "hot": int(r.hot or 0),
+            "hot_rate": round((int(r.hot or 0) / int(r.total)) * 100, 1) if r.total else 0.0,
+        }
+        for r in by_lang_rows
+    ]
+
+    # Cold leads coming up for re-engagement in the next 7 days
+    upcoming_window_end = datetime.now(timezone.utc) + timedelta(days=7)
+    upcoming_reengagement = (await db.execute(
+        select(func.count(Lead.id))
+        .where(Lead.next_call_at.is_not(None), Lead.next_call_at <= upcoming_window_end)
+    )).scalar_one()
+
     return DashboardStats(
         total_leads=total_leads,
         calls_made=calls_made,
@@ -62,4 +113,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         conversion_rate=conversion_rate,
         funnel=funnel,
         daily_activity=daily_activity,
+        by_source=by_source,
+        by_language=by_language,
+        upcoming_reengagement=int(upcoming_reengagement or 0),
     )

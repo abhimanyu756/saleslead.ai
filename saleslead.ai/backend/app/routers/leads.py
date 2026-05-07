@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import Call, CallScore, Lead, Objection, RMHandoff, WhatsAppMessage
 from app.schemas import LeadCreate, LeadOut
+from app.services.demo_seed import seed_demo
 
 log = logging.getLogger("uvicorn.error")
 
@@ -170,6 +171,13 @@ async def batch_call_uncalled(
 
     background_tasks.add_task(_batch_call, uncalled_leads)
     return {"message": f"Batch call started", "triggered": len(uncalled_leads)}
+
+
+@router.post("/seed-demo", status_code=201)
+async def seed_demo_leads(db: AsyncSession = Depends(get_db)):
+    """Insert demo Warm + Cold leads (no Hot) for dashboard demo purposes.
+    Idempotent — phones that already exist are skipped."""
+    return await seed_demo(db)
 
 
 @router.delete("/all", status_code=200)
