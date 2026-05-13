@@ -63,6 +63,7 @@ export default function LeadsPage() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/leads/upload-csv`, {
         method: "POST",
+        headers: { "ngrok-skip-browser-warning": "true" },
         body: formData,
       });
       const data = await res.json();
@@ -98,7 +99,10 @@ export default function LeadsPage() {
     if (!confirm(`Start batch calls for ${uncalled.length} uncalled leads?`)) return;
     setBatchCalling(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/leads/batch-call`, { method: "POST" });
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/leads/batch-call`, {
+        method: "POST",
+        headers: { "ngrok-skip-browser-warning": "true" },
+      });
       const data = await res.json();
       setBatchStatus(`✓ Calling ${data.triggered} leads`);
     } catch {

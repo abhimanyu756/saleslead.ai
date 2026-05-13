@@ -181,12 +181,12 @@ export default function HotQueuePage() {
                     </div>
                   )}
 
-                  {call.score?.network_evidence?.length > 0 && (
+                  {(call.score?.network_evidence?.length ?? 0) > 0 && (
                     <div className="flex items-start gap-2">
                       <Network size={14} className="text-slate-400 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Network Evidence</p>
-                        {call.score.network_evidence.map((e, i) => <p key={i} className="text-xs text-slate-600">{e}</p>)}
+                        {call.score?.network_evidence.map((e, i) => <p key={i} className="text-xs text-slate-600">{e}</p>)}
                       </div>
                     </div>
                   )}

@@ -1,7 +1,10 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Skip ngrok's free-tier browser-warning interstitial that strips CORS headers
+const COMMON_HEADERS: Record<string, string> = { "ngrok-skip-browser-warning": "true" };
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store" });
+  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store", headers: COMMON_HEADERS });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -9,7 +12,7 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...COMMON_HEADERS, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
@@ -17,7 +20,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE" });
+  const res = await fetch(`${BASE_URL}${path}`, { method: "DELETE", headers: COMMON_HEADERS });
   if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -25,7 +28,7 @@ async function del<T>(path: string): Promise<T> {
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...COMMON_HEADERS, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
@@ -42,6 +45,7 @@ export const api = {
   deleteLead: (id: string) => del<{ deleted: string }>(`/leads/${id}`),
   deleteAllLeads: () => del<{ deleted: number }>(`/leads/all`),
   batchCall: () => post<{ message: string; triggered: number }>("/leads/batch-call", {}),
+  recallLeads: (ids: string[]) => post<{ triggered: number; skipped: number }>("/leads/recall", { lead_ids: ids }),
 
   // Calls
   getCalls: () => get<Call[]>("/calls/"),
