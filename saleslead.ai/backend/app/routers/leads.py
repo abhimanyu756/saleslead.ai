@@ -7,6 +7,7 @@ import logging
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,6 +172,42 @@ async def batch_call_uncalled(
 
     background_tasks.add_task(_batch_call, uncalled_leads)
     return {"message": f"Batch call started", "triggered": len(uncalled_leads)}
+
+
+class RecallRequest(BaseModel):
+    lead_ids: list[str]
+
+
+@router.post("/recall", status_code=200)
+async def recall_leads(
+    body: RecallRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-trigger outbound calls for selected leads (typically from Cold Queue).
+    Resets each lead to Uncalled and clears any scheduled re-engagement."""
+    triggered = 0
+    skipped = 0
+    for lead_id in body.lead_ids:
+        result = await db.execute(select(Lead).where(Lead.id == lead_id))
+        lead = result.scalar_one_or_none()
+        if not lead:
+            skipped += 1
+            continue
+        lead.current_classification = "Uncalled"
+        lead.next_call_at = None
+        background_tasks.add_task(
+            _trigger_outbound_call,
+            lead.phone,
+            str(lead.id),
+            lead.name,
+            lead.language_pref,
+            lead.broker_affiliation,
+        )
+        triggered += 1
+    await db.commit()
+    log.info(f"[recall] triggered {triggered} re-calls, skipped {skipped}")
+    return {"triggered": triggered, "skipped": skipped}
 
 
 @router.post("/seed-demo", status_code=201)
