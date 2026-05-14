@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Upload, Plus, Search, Filter, X, Trash2, PhoneCall } from "lucide-react";
+import { Upload, Plus, Search, Filter, X, Trash2, PhoneCall, CheckCircle2 } from "lucide-react";
 import { api, Lead, LeadCreate } from "@/lib/api";
 
 const LANGUAGES = ["Hindi", "English", "Hinglish", "Tamil", "Telugu", "Marathi"];
@@ -27,6 +27,7 @@ export default function LeadsPage() {
   const [saving, setSaving] = useState(false);
   const [batchCalling, setBatchCalling] = useState(false);
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
+  const [callingOverlay, setCallingOverlay] = useState<{ leads: Lead[]; triggered: number | null } | null>(null);
 
   useEffect(() => {
     const load = () => api.getLeads().then(setLeads).catch(console.error);
@@ -42,7 +43,7 @@ export default function LeadsPage() {
     return matchSearch && matchClass;
   });
 
-  async function handleAddLead(e: React.FormEvent) {
+  async function handleAddLead(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     try {
@@ -58,6 +59,7 @@ export default function LeadsPage() {
   }
 
   async function handleCsvUpload(file: File) {
+    const existingIds = new Set(leads.map((l) => l.id));
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -70,6 +72,16 @@ export default function LeadsPage() {
       setCsvStatus(`✓ ${data.created} leads added, ${data.skipped} skipped`);
       const updated = await api.getLeads();
       setLeads(updated);
+      const newLeads = updated.filter((l) => !existingIds.has(l.id));
+      if (newLeads.length > 0) {
+        setCallingOverlay({ leads: newLeads, triggered: null });
+        try {
+          const callRes = await api.batchCall();
+          setCallingOverlay({ leads: newLeads, triggered: callRes.triggered });
+        } catch {
+          setCallingOverlay({ leads: newLeads, triggered: 0 });
+        }
+      }
     } catch {
       setCsvStatus("Upload failed");
     }
@@ -255,6 +267,68 @@ export default function LeadsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Calling Overlay */}
+      {callingOverlay && (
+        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4">
+            {/* Animated phone */}
+            <div className="relative flex items-center justify-center mb-6 h-28">
+              <div className="absolute w-28 h-28 rounded-full bg-emerald-100 animate-ping opacity-20" />
+              <div className="absolute w-20 h-20 rounded-full bg-emerald-100 animate-ping opacity-30" style={{ animationDelay: "0.35s" }} />
+              <div className="absolute w-14 h-14 rounded-full bg-emerald-200 animate-ping opacity-50" style={{ animationDelay: "0.7s" }} />
+              <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg z-10">
+                <PhoneCall size={28} className="text-white" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {callingOverlay.triggered === null ? "Initiating…" : `Calling ${callingOverlay.leads.length} leads`}
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">
+                {callingOverlay.triggered === null
+                  ? "SalesLead AI is dialing your leads"
+                  : callingOverlay.triggered > 0
+                  ? `${callingOverlay.triggered} outbound calls triggered`
+                  : "Calls queued — check back shortly"}
+              </p>
+            </div>
+
+            {/* Sound wave bars */}
+            <div className="flex items-end justify-center gap-1 h-10 mb-8">
+              {[4, 7, 11, 8, 5, 9, 6, 11, 7, 4, 8, 5].map((h, i) => (
+                <div
+                  key={i}
+                  className="w-1.5 rounded-full bg-emerald-400"
+                  style={{
+                    height: `${h * 3}px`,
+                    animation: "soundWave 1.2s ease-in-out infinite alternate",
+                    animationDelay: `${i * 0.1}s`,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Action */}
+            <button
+              onClick={() => setCallingOverlay(null)}
+              disabled={callingOverlay.triggered === null}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-wait transition-colors"
+            >
+              <CheckCircle2 size={15} />
+              {callingOverlay.triggered === null ? "Initiating…" : "Got it, running in background"}
+            </button>
+          </div>
+          <style>{`
+            @keyframes soundWave {
+              from { transform: scaleY(0.3); opacity: 0.5; }
+              to   { transform: scaleY(1);   opacity: 1;   }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* Add Lead Modal */}
       {showForm && (

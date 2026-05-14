@@ -38,12 +38,12 @@ export default function DashboardPage() {
   ];
 
   const statCards = [
-    { label: "Total Leads", value: stats.total_leads, sub: "all time", icon: Users, color: "text-indigo-600", bg: "bg-indigo-50" },
-    { label: "Calls Made", value: stats.calls_made, sub: "total calls", icon: PhoneCall, color: "text-violet-600", bg: "bg-violet-50" },
-    { label: "Hot Leads", value: stats.hot_leads, sub: "RM queue", icon: Flame, color: "text-amber-600", bg: "bg-amber-50" },
-    { label: "Signed Up", value: stats.signed_up, sub: `${stats.conversion_rate}% conversion`, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: "Warm Leads", value: stats.warm_leads, sub: "WhatsApp sent", icon: Clock, color: "text-sky-600", bg: "bg-sky-50" },
-    { label: "Conversion", value: `${stats.conversion_rate}%`, sub: "target: 40%+", icon: TrendingUp, color: "text-rose-600", bg: "bg-rose-50" },
+    { label: "Total Leads", value: stats.total_leads, sub: "all time", icon: Users, color: "text-indigo-600", bg: "bg-indigo-50", href: "/leads" },
+    { label: "Calls Made", value: stats.calls_made, sub: "total calls", icon: PhoneCall, color: "text-violet-600", bg: "bg-violet-50", href: "/calls" },
+    { label: "Hot Leads", value: stats.hot_leads, sub: "RM queue", icon: Flame, color: "text-amber-600", bg: "bg-amber-50", href: "/hot-queue" },
+    { label: "Signed Up", value: stats.signed_up, sub: `${stats.conversion_rate}% conversion`, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50", href: null },
+    { label: "Warm Leads", value: stats.warm_leads, sub: "WhatsApp sent", icon: Clock, color: "text-sky-600", bg: "bg-sky-50", href: "/warm-queue" },
+    { label: "Conversion", value: `${stats.conversion_rate}%`, sub: "target: 40%+", icon: TrendingUp, color: "text-rose-600", bg: "bg-rose-50", href: null },
   ];
 
   return (
@@ -60,18 +60,29 @@ export default function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-4 xl:grid-cols-6">
-        {statCards.map(({ label, value, sub, icon: Icon, color, bg }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 space-y-2">
-            <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
-              <Icon size={15} className={color} />
+        {statCards.map(({ label, value, sub, icon: Icon, color, bg, href }) => {
+          const inner = (
+            <>
+              <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
+                <Icon size={15} className={color} />
+              </div>
+              <p className="text-2xl font-bold text-slate-900">{value}</p>
+              <div>
+                <p className="text-xs font-medium text-slate-700">{label}</p>
+                <p className="text-[11px] text-slate-400">{sub}</p>
+              </div>
+            </>
+          );
+          return href ? (
+            <Link key={label} href={href} className="bg-white rounded-xl border border-slate-100 p-4 space-y-2 hover:border-slate-300 hover:shadow-sm transition-all">
+              {inner}
+            </Link>
+          ) : (
+            <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 space-y-2">
+              {inner}
             </div>
-            <p className="text-2xl font-bold text-slate-900">{value}</p>
-            <div>
-              <p className="text-xs font-medium text-slate-700">{label}</p>
-              <p className="text-[11px] text-slate-400">{sub}</p>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-5 gap-4">
