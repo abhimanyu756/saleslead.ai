@@ -24,10 +24,15 @@ class Settings(BaseSettings):
     WHATSAPP_TEMPLATE_LANG: str = "en"
     META_VERIFY_TOKEN: str = "rupeezy-verify-2026"
 
+    # Gmail SMTP for sending signup-link emails
+    GMAIL_USER: str = ""            # your gmail address
+    GMAIL_APP_PASSWORD: str = ""    # 16-char app password from myaccount.google.com → Security → App passwords
+    GMAIL_FROM_NAME: str = "Priya from Rupeezy"
+
     # Public URL for webhooks + click tracking (set this to your ngrok URL)
     NGROK_URL: str = "http://localhost:8000"
 
-    RUPEEZY_SIGNUP_BASE_URL: str = "https://rupeezy.in/ap?ref="
+    RUPEEZY_SIGNUP_BASE_URL: str = "https://rupeezy.in/authorized-person"
     FRONTEND_URL: str = "http://localhost:3000"
     JWT_SECRET: str = "saleslead-secret-key-change-in-production"
     JWT_ALGORITHM: str = "HS256"

@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator
 class LeadCreate(BaseModel):
     name: str
     phone: str
+    email: Optional[str] = None
     language_pref: str = "Hindi"
     source: Optional[str] = None
     broker_affiliation: Optional[str] = None
@@ -18,6 +19,7 @@ class LeadOut(BaseModel):
     id: str
     name: str
     phone: str
+    email: Optional[str] = None
     language_pref: str
     source: Optional[str]
     broker_affiliation: Optional[str]
@@ -66,6 +68,21 @@ class WhatsAppOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Email ─────────────────────────────────────────────────────────────────────
+
+class EmailOut(BaseModel):
+    to_email: str
+    subject: str
+    body: str
+    link: str
+    language: str
+    sent_at: datetime
+    clicked_at: Optional[datetime]
+    error: Optional[str]
+
+    model_config = {"from_attributes": True}
+
+
 # ── Call ──────────────────────────────────────────────────────────────────────
 
 class CallOut(BaseModel):
@@ -86,6 +103,7 @@ class CallOut(BaseModel):
     score: Optional[ScoreOut]
     objections: list[ObjectionOut]
     whatsapp: Optional[WhatsAppOut]
+    email: Optional[EmailOut] = None
 
     model_config = {"from_attributes": True}
 

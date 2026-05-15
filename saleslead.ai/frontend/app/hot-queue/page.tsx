@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Flame, ChevronDown, ChevronUp, MessageCircle, User, Clock, Network, CheckCircle, XCircle, RefreshCw, Phone, PhoneCall } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Flame, ChevronDown, ChevronUp, MessageCircle, User, Clock, Network, CheckCircle, XCircle, RefreshCw, Phone, PhoneCall, Mail, MailCheck, AlertCircle } from "lucide-react";
 import { api, Lead, Call } from "@/lib/api";
 import Link from "next/link";
+import { QueueFilters, DateRange, withinDateRange } from "@/components/QueueFilters";
 
 function ScoreDot({ score }: { score: number }) {
   const color = score >= 7 ? "bg-emerald-500" : score >= 5 ? "bg-amber-500" : "bg-slate-300";
@@ -34,6 +35,38 @@ export default function HotQueuePage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [savingOutcome, setSavingOutcome] = useState<string | null>(null);
   const [calledIds, setCalledIds] = useState<Set<string>>(new Set());
+
+  // Filter state
+  const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [language, setLanguage] = useState<string>("all");
+  const [source, setSource] = useState<string>("all");
+  const [broker, setBroker] = useState<string>("all");
+
+  const availableLanguages = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.language_pref).filter(Boolean))).sort(),
+    [items]
+  );
+  const availableSources = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.source).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+  const availableBrokers = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.broker_affiliation).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    return items.filter(({ lead, call }) => {
+      if (!withinDateRange(call.started_at, dateRange)) return false;
+      if (language !== "all" && lead.language_pref !== language) return false;
+      if (source !== "all" && lead.source !== source) return false;
+      if (broker !== "all") {
+        if (broker === "__none__" && lead.broker_affiliation) return false;
+        if (broker !== "__none__" && lead.broker_affiliation !== broker) return false;
+      }
+      return true;
+    });
+  }, [items, dateRange, language, source, broker]);
 
   function handleCallLead(callId: string, leadName: string, phone: string, openingLine: string | null) {
     const opener = openingLine && openingLine !== "N/A" && openingLine !== "N/A — signed up."
@@ -91,22 +124,34 @@ export default function HotQueuePage() {
             <Flame size={18} className="text-amber-500" />
             <h1 className="text-xl font-bold text-slate-900">Hot Queue</h1>
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold">
-              {items.length} leads
+              {filteredItems.length} leads
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">High-intent leads ready for RM follow-up</p>
         </div>
       </div>
 
-      {items.length === 0 && (
+      <QueueFilters
+        dateRange={dateRange} setDateRange={setDateRange}
+        language={language} setLanguage={setLanguage}
+        source={source} setSource={setSource}
+        broker={broker} setBroker={setBroker}
+        availableLanguages={availableLanguages}
+        availableSources={availableSources}
+        availableBrokers={availableBrokers}
+        totalCount={items.length}
+        filteredCount={filteredItems.length}
+      />
+
+      {filteredItems.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
           <Flame size={32} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">No hot leads right now. Complete a voice call to see data here.</p>
+          <p className="text-sm text-slate-500">{items.length === 0 ? "No hot leads right now. Complete a voice call to see data here." : "No leads match the current filters."}</p>
         </div>
       )}
 
       <div className="space-y-4">
-        {items.map(({ lead, call }) => {
+        {filteredItems.map(({ lead, call }) => {
           const isExpanded = expanded === call.id;
 
           return (
@@ -139,6 +184,25 @@ export default function HotQueuePage() {
                       <Clock size={12} />
                       {Math.floor(call.duration_s / 60)}m {call.duration_s % 60}s
                     </div>
+                    {(() => {
+                      const em = call.email;
+                      if (!em) return null;
+                      if (em.error) return (
+                        <span className="flex items-center gap-1.5 text-[11px] bg-rose-50 text-rose-600 border border-rose-100 px-2.5 py-1 rounded-full font-medium" title={em.error}>
+                          <AlertCircle size={11} /> Email failed
+                        </span>
+                      );
+                      if (em.clicked_at) return (
+                        <span className="flex items-center gap-1.5 text-[11px] bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium" title="Email link clicked">
+                          <MailCheck size={11} /> Email clicked
+                        </span>
+                      );
+                      return (
+                        <span className="flex items-center gap-1.5 text-[11px] bg-sky-100 text-sky-700 px-2.5 py-1 rounded-full font-medium" title="Email sent">
+                          <Mail size={11} /> Email sent
+                        </span>
+                      );
+                    })()}
                     {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
                   </div>
                 </div>

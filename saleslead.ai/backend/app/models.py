@@ -39,6 +39,7 @@ class Lead(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(200))
     phone: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    email: Mapped[Optional[str]] = mapped_column(String(200), index=True)
     language_pref: Mapped[str] = mapped_column(String(20), default="Hindi")
     source: Mapped[Optional[str]] = mapped_column(String(100))
     broker_affiliation: Mapped[Optional[str]] = mapped_column(String(200))
@@ -78,6 +79,7 @@ class Call(Base):
     score: Mapped[Optional["CallScore"]] = relationship("CallScore", back_populates="call", uselist=False)
     objections: Mapped[list["Objection"]] = relationship("Objection", back_populates="call")
     whatsapp: Mapped[Optional["WhatsAppMessage"]] = relationship("WhatsAppMessage", back_populates="call", uselist=False)
+    email: Mapped[Optional["EmailMessage"]] = relationship("EmailMessage", back_populates="call", uselist=False)
     rm_handoff: Mapped[Optional["RMHandoff"]] = relationship("RMHandoff", back_populates="call", uselist=False)
 
 
@@ -127,6 +129,24 @@ class WhatsAppMessage(Base):
     twilio_sid: Mapped[Optional[str]] = mapped_column(String(100))  # holds WhatsApp message id
 
     call: Mapped["Call"] = relationship("Call", back_populates="whatsapp")
+
+
+class EmailMessage(Base):
+    __tablename__ = "email_messages"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
+    call_id: Mapped[str] = mapped_column(ForeignKey("calls.id"), unique=True)
+
+    to_email: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text)
+    link: Mapped[str] = mapped_column(String(500))
+    language: Mapped[str] = mapped_column(String(20))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    clicked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    error: Mapped[Optional[str]] = mapped_column(Text)
+
+    call: Mapped["Call"] = relationship("Call", back_populates="email")
 
 
 class RMHandoff(Base):

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/hot-queue", label: "Hot Queue", icon: Flame },
   { href: "/warm-queue", label: "Warm Queue", icon: MessageCircle },

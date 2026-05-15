@@ -29,6 +29,7 @@ async def _load_call(call_id: str, db: AsyncSession) -> Call:
             selectinload(Call.score),
             selectinload(Call.objections),
             selectinload(Call.whatsapp),
+            selectinload(Call.email),
         )
         .where(Call.id == call_id)
     )
@@ -46,6 +47,7 @@ async def list_calls(db: AsyncSession = Depends(get_db)):
             selectinload(Call.score),
             selectinload(Call.objections),
             selectinload(Call.whatsapp),
+            selectinload(Call.email),
         )
         .order_by(Call.started_at.desc())
     )

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Call, WhatsAppMessage
+from app.models import Call, EmailMessage, WhatsAppMessage
 from app.routers import auth, calls, dashboard, leads, voice, whatsapp
 
 # Ensure audio dir exists before mounting
@@ -42,22 +42,38 @@ async def health():
 
 
 @app.get("/r/{lead_id}")
-async def public_redirect(lead_id: str, db: AsyncSession = Depends(get_db)):
-    """Public click-tracking redirect for WhatsApp links.
-    Best-effort logs the click, always redirects to the Rupeezy signup URL."""
-    target = f"{settings.RUPEEZY_SIGNUP_BASE_URL}{lead_id}"
+async def public_redirect(
+    lead_id: str,
+    channel: str = "whatsapp",
+    db: AsyncSession = Depends(get_db),
+):
+    """Public click-tracking redirect. ?channel=email or whatsapp (default).
+    Best-effort logs the click on the matching channel, always redirects to Rupeezy signup."""
+    target = settings.RUPEEZY_SIGNUP_BASE_URL  # clean URL — Rupeezy doesn't consume our lead_id
+    now = datetime.now(timezone.utc)
     try:
-        result = await db.execute(
-            select(WhatsAppMessage)
-            .join(Call)
-            .where(Call.lead_id == lead_id)
-            .order_by(WhatsAppMessage.sent_at.desc())
-        )
-        wa = result.scalars().first()
-        if wa and not wa.clicked_at:
-            wa.clicked_at = datetime.now(timezone.utc)
-            await db.commit()
+        if channel == "email":
+            result = await db.execute(
+                select(EmailMessage)
+                .join(Call)
+                .where(Call.lead_id == lead_id)
+                .order_by(EmailMessage.sent_at.desc())
+            )
+            em = result.scalars().first()
+            if em and not em.clicked_at:
+                em.clicked_at = now
+                await db.commit()
+        else:
+            result = await db.execute(
+                select(WhatsAppMessage)
+                .join(Call)
+                .where(Call.lead_id == lead_id)
+                .order_by(WhatsAppMessage.sent_at.desc())
+            )
+            wa = result.scalars().first()
+            if wa and not wa.clicked_at:
+                wa.clicked_at = now
+                await db.commit()
     except Exception:
-        # Invalid UUID / DB hiccup — still redirect so the lead reaches signup
         await db.rollback()
     return RedirectResponse(url=target, status_code=302)

@@ -63,6 +63,7 @@ export interface Lead {
   id: string;
   name: string;
   phone: string;
+  email: string | null;
   language_pref: string;
   source: string | null;
   broker_affiliation: string | null;
@@ -74,6 +75,7 @@ export interface Lead {
 export interface LeadCreate {
   name: string;
   phone: string;
+  email?: string;
   language_pref: string;
   source?: string;
   broker_affiliation?: string;
@@ -105,6 +107,17 @@ export interface WhatsApp {
   clicked_at: string | null;
 }
 
+export interface EmailMessage {
+  to_email: string;
+  subject: string;
+  body: string;
+  link: string;
+  language: string;
+  sent_at: string;
+  clicked_at: string | null;
+  error: string | null;
+}
+
 export interface Call {
   id: string;
   lead_id: string;
@@ -123,6 +136,7 @@ export interface Call {
   score: Score | null;
   objections: Objection[];
   whatsapp: WhatsApp | null;
+  email: EmailMessage | null;
 }
 
 export interface DashboardStats {

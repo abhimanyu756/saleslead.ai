@@ -11,13 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Call, CallScore, Lead, Objection, RMHandoff, WhatsAppMessage
+from app.models import Call, CallScore, EmailMessage, Lead, Objection, RMHandoff, WhatsAppMessage
 
 
 HOT_LEADS: list[dict[str, Any]] = [
     {
         "name": "Rajesh Kumar",
         "phone": "+919876543210",
+        "email": "rajesh.kumar@example.com",
         "language_pref": "Hindi",
         "source": "LinkedIn",
         "broker_affiliation": None,
@@ -55,6 +56,7 @@ HOT_LEADS: list[dict[str, Any]] = [
     {
         "name": "Priya Mehta",
         "phone": "+919765431200",
+        "email": "priya.mehta@example.com",
         "language_pref": "Hinglish",
         "source": "Instagram Ad",
         "broker_affiliation": "Zerodha",
@@ -96,6 +98,7 @@ WARM_LEADS: list[dict[str, Any]] = [
     {
         "name": "Arjun Iyer",
         "phone": "+919845671234",
+        "email": "arjun.iyer@example.com",
         "language_pref": "English",
         "source": "LinkedIn",
         "broker_affiliation": "Groww",
@@ -126,6 +129,7 @@ WARM_LEADS: list[dict[str, Any]] = [
     {
         "name": "Sneha Reddy",
         "phone": "+919812345670",
+        "email": "sneha.reddy@example.com",
         "language_pref": "Telugu",
         "source": "Facebook Ads",
         "broker_affiliation": None,
@@ -205,7 +209,7 @@ COLD_LEADS: list[dict[str, Any]] = [
 
 def _build_call(
     lead_id: str, data: dict, classification: str
-) -> tuple[Call, CallScore, list[Objection], WhatsAppMessage | None, RMHandoff | None]:
+) -> tuple[Call, CallScore, list[Objection], WhatsAppMessage | None, EmailMessage | None, RMHandoff | None]:
     started_at = datetime.now(timezone.utc) - timedelta(hours=2, minutes=abs(hash(data["phone"])) % 600)
     duration_s = data["duration_s"]
 
@@ -280,6 +284,29 @@ def _build_call(
             twilio_sid=f"wamid.demo.{data['phone'].lstrip('+')}",
         )
 
+    # Hot AND Warm: also produce an Email record if the lead has an email
+    email_msg = None
+    if classification in ("Hot", "Warm") and data.get("email"):
+        email_link = f"{settings.RUPEEZY_SIGNUP_BASE_URL}{lead_id}?channel=email"
+        subject = f"Quick note about the Rupeezy Partner Program — Priya"
+        body = (
+            f"Hi {data['name']},\n\n"
+            "This is Priya from Rupeezy. Thanks for the call earlier — really appreciated your time.\n\n"
+            "Here's the partner sign-up link whenever you have a moment:\n"
+            f"{email_link}\n\n"
+            "Reply if you have any questions, happy to help.\n\n"
+            "Best,\nPriya\nRupeezy AP Program"
+        )
+        email_msg = EmailMessage(
+            to_email=data["email"],
+            subject=subject,
+            body=body,
+            link=email_link,
+            language=data["language_pref"],
+            sent_at=started_at + timedelta(seconds=duration_s + 45),
+            clicked_at=started_at + timedelta(minutes=20) if abs(hash(data["phone"])) % 3 == 0 else None,
+        )
+
     # Hot leads get an RM handoff brief
     handoff = None
     if classification == "Hot":
@@ -297,7 +324,7 @@ def _build_call(
             recommended_opening_line=data["opening_line"],
         )
 
-    return call, score, objections, whatsapp, handoff
+    return call, score, objections, whatsapp, email_msg, handoff
 
 
 async def seed_demo(db: AsyncSession) -> dict[str, int]:
@@ -332,6 +359,7 @@ async def seed_demo(db: AsyncSession) -> dict[str, int]:
             lead = Lead(
                 name=d["name"],
                 phone=d["phone"],
+                email=d.get("email"),
                 language_pref=d["language_pref"],
                 source=d["source"],
                 broker_affiliation=d["broker_affiliation"],
@@ -341,7 +369,7 @@ async def seed_demo(db: AsyncSession) -> dict[str, int]:
             db.add(lead)
             await db.flush()
 
-            call, score, objections, whatsapp, handoff = _build_call(lead.id, d, classification)
+            call, score, objections, whatsapp, email_msg, handoff = _build_call(lead.id, d, classification)
             db.add(call)
             await db.flush()
 
@@ -353,6 +381,9 @@ async def seed_demo(db: AsyncSession) -> dict[str, int]:
             if whatsapp is not None:
                 whatsapp.call_id = call.id
                 db.add(whatsapp)
+            if email_msg is not None:
+                email_msg.call_id = call.id
+                db.add(email_msg)
             if handoff is not None:
                 handoff.call_id = call.id
                 db.add(handoff)

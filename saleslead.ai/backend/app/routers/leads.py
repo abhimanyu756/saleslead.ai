@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Call, CallScore, Lead, Objection, RMHandoff, WhatsAppMessage
+from app.models import Call, CallScore, EmailMessage, Lead, Objection, RMHandoff, WhatsAppMessage
 from app.schemas import LeadCreate, LeadOut
 from app.services.demo_seed import seed_demo
 
@@ -22,7 +22,7 @@ log = logging.getLogger("uvicorn.error")
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 # Max concurrent outbound calls at a time
-CALL_CONCURRENCY = 5
+CALL_CONCURRENCY = 1  # ElevenLabs free/starter plans cap concurrent agent conversations; serial is safest
 
 
 async def _trigger_outbound_call(
@@ -40,11 +40,30 @@ async def _trigger_outbound_call(
         log.warning("[outbound_call] SKIP — ELEVENLABS_AGENT_ID not configured")
         return
 
+    # Map our language labels → ElevenLabs ISO language codes for preset selection
+    lang_code_map = {
+        "Hindi": "hi",
+        "English": "en",
+        "Hinglish": "hi",  # ElevenLabs treats Hinglish under Hindi preset
+        "Kannada": "kn",
+        "Tamil": "ta",
+        "Telugu": "te",
+        "Marathi": "mr",
+        "Gujarati": "gu",
+        "Bengali": "bn",
+    }
+    lang_code = lang_code_map.get(language, "hi")
+
     payload = {
         "agent_id": settings.ELEVENLABS_AGENT_ID,
         "agent_phone_number_id": settings.ELEVENLABS_PHONE_NUMBER_ID,
         "to_number": phone,
         "conversation_initiation_client_data": {
+            "conversation_config_override": {
+                "agent": {
+                    "language": lang_code,  # picks the matching first-message preset
+                },
+            },
             "dynamic_variables": {
                 "lead_id": lead_id,
                 "lead_name": lead_name,
@@ -75,7 +94,7 @@ async def _trigger_outbound_call(
         log.error(f"[outbound_call] EXCEPTION for {phone}: {type(e).__name__}: {e}")
 
 
-async def _batch_call(leads: list[Lead], delay_seconds: float = 2.0):
+async def _batch_call(leads: list[Lead], delay_seconds: float = 5.0):
     """Call multiple leads concurrently with a semaphore to limit concurrency."""
     semaphore = asyncio.Semaphore(CALL_CONCURRENCY)
 
@@ -135,11 +154,12 @@ async def upload_csv(
             skipped += 1
             continue
         lead = Lead(
-            name=row.get("name", "").strip() or "Unknown",
+            name=(row.get("name") or "").strip() or "Unknown",
             phone=phone,
-            language_pref=row.get("language_pref", "Hindi").strip(),
-            source=row.get("source", "csv").strip() or "csv",
-            broker_affiliation=row.get("broker_affiliation", "").strip() or None,
+            email=(row.get("email") or "").strip() or None,
+            language_pref=(row.get("language_pref") or "Hindi").strip(),
+            source=(row.get("source") or "csv").strip() or "csv",
+            broker_affiliation=(row.get("broker_affiliation") or "").strip() or None,
         )
         db.add(lead)
         new_leads.append(lead)
@@ -221,6 +241,7 @@ async def delete_all_leads(db: AsyncSession = Depends(get_db)):
     """Wipe all leads + all related records."""
     await db.execute(delete(RMHandoff))
     await db.execute(delete(WhatsAppMessage))
+    await db.execute(delete(EmailMessage))
     await db.execute(delete(Objection))
     await db.execute(delete(CallScore))
     await db.execute(delete(Call))
@@ -249,6 +270,7 @@ async def delete_lead(lead_id: str, db: AsyncSession = Depends(get_db)):
     if call_ids:
         await db.execute(delete(RMHandoff).where(RMHandoff.call_id.in_(call_ids)))
         await db.execute(delete(WhatsAppMessage).where(WhatsAppMessage.call_id.in_(call_ids)))
+        await db.execute(delete(EmailMessage).where(EmailMessage.call_id.in_(call_ids)))
         await db.execute(delete(Objection).where(Objection.call_id.in_(call_ids)))
         await db.execute(delete(CallScore).where(CallScore.call_id.in_(call_ids)))
         await db.execute(delete(Call).where(Call.id.in_(call_ids)))

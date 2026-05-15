@@ -1,260 +1,345 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { TrendingUp, Users, Flame, PhoneCall, CheckCircle, Clock, Globe, Megaphone, Snowflake } from "lucide-react";
-import { api, DashboardStats, Lead } from "@/lib/api";
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Zap, Phone, Globe, Flame, MessageCircle, Snowflake, Mail,
+  Brain, Clock, BarChart3, Layers, Headphones, ArrowRight,
+  CheckCircle2, Sparkles,
+} from "lucide-react";
 
-function classificationBadge(c: string | null) {
-  if (c === "Hot") return "bg-amber-100 text-amber-700";
-  if (c === "Warm") return "bg-indigo-100 text-indigo-700";
-  if (c === "Cold") return "bg-slate-100 text-slate-500";
-  return "bg-slate-100 text-slate-400";
-}
+export default function LandingPage() {
+  const router = useRouter();
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
-
+  // Auto-redirect logged-in users to dashboard
   useEffect(() => {
-    const load = () => {
-      api.getDashboard().then(setStats).catch(console.error);
-      api.getLeads().then(setLeads).catch(console.error);
-    };
-    load();
-    const id = setInterval(load, 5000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!stats) {
-    return <div className="p-6 text-sm text-slate-400">Loading...</div>;
-  }
-
-  const classificationData = [
-    { name: "Hot", value: stats.hot_leads, fill: "#f59e0b" },
-    { name: "Warm", value: stats.warm_leads, fill: "#6366f1" },
-    { name: "Cold", value: stats.cold_leads, fill: "#94a3b8" },
-  ];
-
-  const statCards = [
-    { label: "Total Leads", value: stats.total_leads, sub: "all time", icon: Users, color: "text-indigo-600", bg: "bg-indigo-50", href: "/leads" },
-    { label: "Calls Made", value: stats.calls_made, sub: "total calls", icon: PhoneCall, color: "text-violet-600", bg: "bg-violet-50", href: "/calls" },
-    { label: "Hot Leads", value: stats.hot_leads, sub: "RM queue", icon: Flame, color: "text-amber-600", bg: "bg-amber-50", href: "/hot-queue" },
-    { label: "Signed Up", value: stats.signed_up, sub: `${stats.conversion_rate}% conversion`, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50", href: null },
-    { label: "Warm Leads", value: stats.warm_leads, sub: "WhatsApp sent", icon: Clock, color: "text-sky-600", bg: "bg-sky-50", href: "/warm-queue" },
-    { label: "Conversion", value: `${stats.conversion_rate}%`, sub: "target: 40%+", icon: TrendingUp, color: "text-rose-600", bg: "bg-rose-50", href: null },
-  ];
+    if (typeof window !== "undefined" && localStorage.getItem("token")) {
+      router.replace("/dashboard");
+    }
+  }, [router]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-sm text-slate-500">Rupeezy AP Program — Live Conversion Funnel</p>
-        </div>
-        <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-medium">
-          Live · {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-        </span>
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-3 gap-4 xl:grid-cols-6">
-        {statCards.map(({ label, value, sub, icon: Icon, color, bg, href }) => {
-          const inner = (
-            <>
-              <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center`}>
-                <Icon size={15} className={color} />
-              </div>
-              <p className="text-2xl font-bold text-slate-900">{value}</p>
-              <div>
-                <p className="text-xs font-medium text-slate-700">{label}</p>
-                <p className="text-[11px] text-slate-400">{sub}</p>
-              </div>
-            </>
-          );
-          return href ? (
-            <Link key={label} href={href} className="bg-white rounded-xl border border-slate-100 p-4 space-y-2 hover:border-slate-300 hover:shadow-sm transition-all">
-              {inner}
+    <div className="min-h-screen bg-white">
+      {/* ── Top nav ───────────────────────────────────────────────────────── */}
+      <nav className="border-b border-slate-100 bg-white/80 backdrop-blur sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+              <Zap size={16} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900 leading-none">SalesLead.ai</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Rupeezy AP Program</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/login"
+              className="text-sm text-slate-600 hover:text-slate-900 px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              Sign in
             </Link>
-          ) : (
-            <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 space-y-2">
-              {inner}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-5 gap-4">
-        {/* Funnel chart */}
-        <div className="col-span-3 bg-white rounded-xl border border-slate-100 p-5">
-          <h2 className="text-sm font-semibold text-slate-900 mb-4">Conversion Funnel</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={stats.funnel} layout="vertical" barSize={22}>
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="stage" tick={{ fontSize: 12, fill: "#64748b" }} width={80} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} formatter={(v) => [v, "Leads"]} />
-              <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+            <Link
+              href="/register"
+              className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-1.5"
+            >
+              Get started <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
+      </nav>
 
-        {/* Classification breakdown */}
-        <div className="col-span-2 bg-white rounded-xl border border-slate-100 p-5">
-          <h2 className="text-sm font-semibold text-slate-900 mb-4">Lead Classification</h2>
-          <div className="space-y-3">
-            {classificationData.map(({ name, value, fill }) => (
-              <div key={name}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="font-medium text-slate-700">{name}</span>
-                  <span className="text-slate-500">{value} leads</span>
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/60 via-white to-white -z-10" />
+        <div className="max-w-6xl mx-auto px-6 py-20 md:py-28 text-center">
+          <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold px-3 py-1 rounded-full mb-6">
+            <Sparkles size={12} /> AI Voice Agent for Partner Lead Conversion
+          </div>
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 leading-[1.1] tracking-tight max-w-3xl mx-auto">
+            Convert 40% of your leads — without scaling your RM team.
+          </h1>
+          <p className="mt-6 text-base md:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            An AI voice agent that calls every new lead within seconds, pitches your partner
+            program in their language, qualifies interest, and hands hot leads to RMs with
+            full conversation context.
+          </p>
+          <div className="mt-9 flex items-center justify-center gap-3">
+            <Link
+              href="/register"
+              className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-indigo-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+            >
+              Get started <ArrowRight size={15} />
+            </Link>
+            <Link
+              href="/login"
+              className="bg-white border border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-semibold text-sm hover:border-indigo-300 transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+
+          {/* Stat strip */}
+          <div className="mt-16 grid grid-cols-3 gap-6 max-w-3xl mx-auto">
+            {[
+              { num: "18% → 40%+", label: "Target conversion lift" },
+              { num: "9", label: "Indian languages" },
+              { num: "< 5 min", label: "Lead-to-call SLA" },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <p className="text-2xl md:text-3xl font-bold text-indigo-600">{s.num}</p>
+                <p className="text-xs text-slate-500 font-medium mt-1">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Problem ──────────────────────────────────────────────────────── */}
+      <section className="bg-slate-50 border-y border-slate-100">
+        <div className="max-w-6xl mx-auto px-6 py-16">
+          <div className="text-center mb-12">
+            <p className="text-xs font-semibold text-indigo-600 tracking-widest uppercase">The problem</p>
+            <h2 className="mt-2 text-2xl md:text-3xl font-bold text-slate-900">
+              82% of partner leads never convert — and it's not the product.
+            </h2>
+            <p className="mt-3 text-sm text-slate-600 max-w-2xl mx-auto">
+              Three structural bottlenecks in the RM-driven process: timing, language, capacity.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Clock,
+                title: "Timing",
+                body: "Leads arriving after hours sit untouched until next business day. 5-minute response wins 9× more than 30 minutes.",
+              },
+              {
+                icon: Globe,
+                title: "Language",
+                body: "India has 20+ major languages. A Hindi lead given an English pitch hangs up in 15 seconds. RMs cover 1-2 languages.",
+              },
+              {
+                icon: Layers,
+                title: "Capacity",
+                body: "One RM = one call at a time. A 200-lead overnight batch backs up for days. Lead #200 has forgotten they signed up.",
+              },
+            ].map(({ icon: Icon, title, body }) => (
+              <div key={title} className="bg-white border border-slate-100 rounded-2xl p-6">
+                <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center mb-4">
+                  <Icon size={18} className="text-rose-500" />
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full">
-                  <div className="h-full rounded-full" style={{ width: `${stats.total_leads ? (value / stats.total_leads) * 100 : 0}%`, backgroundColor: fill }} />
+                <p className="font-bold text-slate-900">{title}</p>
+                <p className="mt-2 text-sm text-slate-600 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ─────────────────────────────────────────────────────── */}
+      <section>
+        <div className="max-w-6xl mx-auto px-6 py-20">
+          <div className="text-center mb-12">
+            <p className="text-xs font-semibold text-indigo-600 tracking-widest uppercase">What it does</p>
+            <h2 className="mt-2 text-2xl md:text-3xl font-bold text-slate-900">
+              The full pipeline, end to end.
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Phone,
+                color: "bg-emerald-50 text-emerald-600",
+                title: "Instant outreach",
+                body: "AI agent dials every new lead within seconds of CSV upload. 24/7, no queue, no weekends gap.",
+              },
+              {
+                icon: Globe,
+                color: "bg-sky-50 text-sky-600",
+                title: "9 languages",
+                body: "Hindi, English, Hinglish, Tamil, Telugu, Kannada, Marathi, Gujarati, Bengali — code-mixing included.",
+              },
+              {
+                icon: Brain,
+                color: "bg-violet-50 text-violet-600",
+                title: "Smart objection handling",
+                body: "Acknowledges, reframes, and moves forward — adapting to what the lead actually said, not a static script.",
+              },
+              {
+                icon: Flame,
+                color: "bg-amber-50 text-amber-600",
+                title: "Hot / Warm / Cold scoring",
+                body: "Every call scored on interest, readiness, and network size. Evidence quotes from the transcript.",
+              },
+              {
+                icon: Headphones,
+                color: "bg-indigo-50 text-indigo-600",
+                title: "RM handoff brief",
+                body: "Hot leads land in the RM queue with a 30-second summary, recommended opening line, and full audio replay.",
+              },
+              {
+                icon: MessageCircle,
+                color: "bg-emerald-50 text-emerald-600",
+                title: "WhatsApp follow-up",
+                body: "Personal-feeling message goes to Warm leads with the sign-up link. Click and delivery tracked.",
+              },
+              {
+                icon: Mail,
+                color: "bg-rose-50 text-rose-600",
+                title: "Email signup link",
+                body: "HTML email with clean CTA button to Hot/Warm leads. Tracks open status via Gmail SMTP.",
+              },
+              {
+                icon: Snowflake,
+                color: "bg-slate-100 text-slate-500",
+                title: "Cold lead nurture",
+                body: "Auto-scheduled re-engagement at 30/60/90 days. Bulk re-call from a filtered view.",
+              },
+              {
+                icon: BarChart3,
+                color: "bg-violet-50 text-violet-600",
+                title: "Real-time dashboard",
+                body: "Funnel breakdown, transcript viewer, scoring evidence, conversion by language and source.",
+              },
+            ].map(({ icon: Icon, color, title, body }) => (
+              <div key={title} className="bg-white border border-slate-100 rounded-2xl p-6 hover:border-slate-200 hover:shadow-sm transition-all">
+                <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center mb-4`}>
+                  <Icon size={18} />
+                </div>
+                <p className="font-bold text-slate-900">{title}</p>
+                <p className="mt-2 text-sm text-slate-600 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── How it works ────────────────────────────────────────────────── */}
+      <section className="bg-slate-50 border-y border-slate-100">
+        <div className="max-w-5xl mx-auto px-6 py-20">
+          <div className="text-center mb-12">
+            <p className="text-xs font-semibold text-indigo-600 tracking-widest uppercase">How it works</p>
+            <h2 className="mt-2 text-2xl md:text-3xl font-bold text-slate-900">
+              From upload to closed sign-up.
+            </h2>
+          </div>
+          <div className="space-y-4">
+            {[
+              {
+                step: "01",
+                title: "Upload leads",
+                body: "Drop a CSV or add leads one by one. Phone, language preference, email — that's all you need.",
+              },
+              {
+                step: "02",
+                title: "AI agent calls each lead",
+                body: "Within seconds, every lead gets a call in their language. The agent pitches naturally, handles objections, and qualifies interest.",
+              },
+              {
+                step: "03",
+                title: "Hot leads land in the RM queue",
+                body: "Full transcript, summary, suggested opening line, and audio replay. RM picks up the phone already knowing the lead.",
+              },
+              {
+                step: "04",
+                title: "Warm + Cold leads auto-nurture",
+                body: "Warm gets a WhatsApp + email follow-up with sign-up link. Cold gets auto-scheduled for re-engagement at 30/60/90 days.",
+              },
+            ].map(({ step, title, body }) => (
+              <div key={step} className="flex gap-5 bg-white border border-slate-100 rounded-2xl p-6">
+                <div className="text-2xl font-bold text-indigo-200 shrink-0 w-12">{step}</div>
+                <div>
+                  <p className="font-bold text-slate-900">{title}</p>
+                  <p className="mt-1 text-sm text-slate-600 leading-relaxed">{body}</p>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-5 pt-4 border-t border-slate-100 space-y-2">
-            <p className="text-xs font-semibold text-slate-900">Queue Status</p>
-            <div className="flex gap-2 flex-wrap">
-              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{stats.hot_leads} Hot in queue</span>
-              <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">{stats.warm_leads} WhatsApp sent</span>
-            </div>
-          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Daily activity */}
-      <div className="bg-white rounded-xl border border-slate-100 p-5">
-        <h2 className="text-sm font-semibold text-slate-900 mb-4">Daily Activity</h2>
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={stats.daily_activity} barGap={3}>
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} />
-            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
-            <Bar dataKey="calls" name="Calls" fill="#818cf8" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="hot" name="Hot" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Conversion analytics */}
-      <div className="grid grid-cols-3 gap-4">
-        {/* By Source */}
-        <div className="bg-white rounded-xl border border-slate-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Megaphone size={15} className="text-violet-600" />
-            <h2 className="text-sm font-semibold text-slate-900">Conversion by Source</h2>
-          </div>
-          {stats.by_source.length === 0 ? (
-            <p className="text-xs text-slate-400">No data yet.</p>
-          ) : (
-            <div className="space-y-2.5">
-              {stats.by_source.slice(0, 6).map((s) => (
-                <div key={s.source}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-medium text-slate-700 truncate">{s.source}</span>
-                    <span className="text-slate-500">
-                      {s.hot}/{s.total}
-                      <span className="ml-1.5 text-emerald-600 font-semibold">{s.hot_rate}%</span>
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-violet-500 rounded-full"
-                      style={{ width: `${Math.min(100, s.hot_rate)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* By Language */}
-        <div className="bg-white rounded-xl border border-slate-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Globe size={15} className="text-sky-600" />
-            <h2 className="text-sm font-semibold text-slate-900">Conversion by Language</h2>
-          </div>
-          {stats.by_language.length === 0 ? (
-            <p className="text-xs text-slate-400">No data yet.</p>
-          ) : (
-            <div className="space-y-2.5">
-              {stats.by_language.slice(0, 6).map((l) => (
-                <div key={l.language}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="font-medium text-slate-700">{l.language}</span>
-                    <span className="text-slate-500">
-                      {l.hot}/{l.total}
-                      <span className="ml-1.5 text-emerald-600 font-semibold">{l.hot_rate}%</span>
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-sky-500 rounded-full"
-                      style={{ width: `${Math.min(100, l.hot_rate)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Re-engagement */}
-        <div className="bg-white rounded-xl border border-slate-100 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Snowflake size={15} className="text-slate-500" />
-            <h2 className="text-sm font-semibold text-slate-900">Cold Re-engagement</h2>
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{stats.upcoming_reengagement}</p>
-          <p className="text-xs text-slate-500 mt-0.5">cold leads due within 7 days</p>
-          <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
-            Cold leads are auto-scheduled for follow-up at 30/60/90 days based on their drop-off pattern.
-          </p>
-          <Link href="/cold-queue" className="mt-3 inline-block text-xs text-indigo-600 hover:underline">
-            View cold queue →
-          </Link>
-        </div>
-      </div>
-
-      {/* Recent leads */}
-      <div className="bg-white rounded-xl border border-slate-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-900">Recent Leads</h2>
-          <Link href="/leads" className="text-xs text-indigo-600 hover:underline">View all</Link>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-slate-400 border-b border-slate-100">
-              <th className="pb-2 font-medium">Name</th>
-              <th className="pb-2 font-medium">Phone</th>
-              <th className="pb-2 font-medium">Language</th>
-              <th className="pb-2 font-medium">Classification</th>
-              <th className="pb-2 font-medium">Added</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {leads.slice(0, 5).map((lead) => (
-              <tr key={lead.id} className="hover:bg-slate-50">
-                <td className="py-2.5 font-medium text-slate-900">{lead.name}</td>
-                <td className="py-2.5 text-slate-500">{lead.phone}</td>
-                <td className="py-2.5 text-slate-500">{lead.language_pref}</td>
-                <td className="py-2.5">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${classificationBadge(lead.current_classification)}`}>
-                    {lead.current_classification}
-                  </span>
-                </td>
-                <td className="py-2.5 text-slate-400 text-xs">
-                  {new Date(lead.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                </td>
-              </tr>
+      {/* ── Tech stack ──────────────────────────────────────────────────── */}
+      <section>
+        <div className="max-w-5xl mx-auto px-6 py-16 text-center">
+          <p className="text-xs font-semibold text-indigo-600 tracking-widest uppercase">Built on</p>
+          <h2 className="mt-2 text-xl md:text-2xl font-bold text-slate-900">
+            Production-grade stack.
+          </h2>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            {[
+              "ElevenLabs Conversational AI",
+              "Gemini 2.5 Flash",
+              "FastAPI",
+              "Next.js 16",
+              "PostgreSQL",
+              "Redis + RQ",
+              "Meta WhatsApp Cloud API",
+              "Gmail SMTP",
+              "Twilio Voice",
+              "HMAC-verified webhooks",
+            ].map((t) => (
+              <span
+                key={t}
+                className="text-xs bg-slate-50 border border-slate-100 text-slate-600 px-3 py-1.5 rounded-full font-medium"
+              >
+                {t}
+              </span>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA + footer ────────────────────────────────────────────────── */}
+      <section className="bg-gradient-to-br from-indigo-600 to-indigo-700">
+        <div className="max-w-4xl mx-auto px-6 py-20 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold text-white">
+            Stop losing leads to delay, language, and queue overflow.
+          </h2>
+          <p className="mt-4 text-indigo-100 text-base max-w-2xl mx-auto">
+            Spin up the dashboard, drop a CSV, and watch your funnel fill up by lunchtime.
+          </p>
+          <div className="mt-9 flex items-center justify-center gap-3">
+            <Link
+              href="/register"
+              className="bg-white text-indigo-700 px-6 py-3 rounded-xl font-semibold text-sm hover:bg-indigo-50 shadow-lg transition-all flex items-center gap-2"
+            >
+              Create your account <ArrowRight size={15} />
+            </Link>
+            <Link
+              href="/login"
+              className="bg-indigo-500/30 hover:bg-indigo-500/40 text-white border border-indigo-400/40 px-6 py-3 rounded-xl font-semibold text-sm transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-indigo-100">
+            {["No credit card", "Demo data preloaded", "Setup in minutes"].map((t) => (
+              <span key={t} className="flex items-center gap-1.5">
+                <CheckCircle2 size={12} /> {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-100">
+        <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="w-5 h-5 rounded bg-indigo-600 flex items-center justify-center">
+              <Zap size={10} className="text-white" />
+            </div>
+            <span className="font-semibold text-slate-700">SalesLead.ai</span>
+            <span>·</span>
+            <span>Built for the AI for Bharath hackathon</span>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Solving the Rupeezy AP partner conversion problem.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

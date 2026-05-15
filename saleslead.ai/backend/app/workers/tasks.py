@@ -6,7 +6,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
-from app.models import Call, CallScore, Lead, Objection, RMHandoff, WhatsAppMessage
+from app.models import Call, CallScore, EmailMessage, Lead, Objection, RMHandoff, WhatsAppMessage
+from app.services.email import build_signup_link as build_email_link, send_signup_email
 from app.services.scorer import score_call
 from app.services.whatsapp import send_warm_followup
 
@@ -86,8 +87,10 @@ async def _process_call_async(call_id: str) -> None:
         if scored["classification"] == "Hot":
             await _create_rm_handoff(db, call, lead, scored)
             await _send_whatsapp(db, call, lead)  # also send WhatsApp for Hot (testing convenience)
+            await _send_email(db, call, lead)
         elif scored["classification"] == "Warm":
             await _send_whatsapp(db, call, lead)
+            await _send_email(db, call, lead)
 
         await db.commit()
 
@@ -122,4 +125,26 @@ async def _send_whatsapp(db, call: Call, lead: Lead) -> None:
         link=result["link"],
         language=result["language"],
         twilio_sid=result["twilio_sid"],
+    ))
+
+
+async def _send_email(db, call: Call, lead: Lead) -> None:
+    """Send signup-link email if lead has an email address."""
+    if not lead.email:
+        return
+    link = build_email_link(lead.id)
+    result = send_signup_email(
+        to_email=lead.email,
+        name=lead.name,
+        language=call.language_used,
+        link=link,
+    )
+    db.add(EmailMessage(
+        call_id=call.id,
+        to_email=lead.email,
+        subject=result["subject"],
+        body=result["body"],
+        link=link,
+        language=call.language_used,
+        error=result.get("error"),
     ))

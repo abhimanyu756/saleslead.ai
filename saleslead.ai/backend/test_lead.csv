@@ -1,2 +1,3 @@
-name,phone,language_pref,source,broker_affiliation
-Abhimanyu,+918102652783,Kannada,manual_test,Zerodha
+name,phone,email,language_pref,source,broker_affiliation
+Abhimanyu,+918102652783,abhimanyu81026@gmail.com,Marathi,manual_test,Zerodha
+

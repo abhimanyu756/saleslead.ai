@@ -31,7 +31,7 @@ export default function LoginPage() {
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("user_name", data.user_name);
       localStorage.setItem("user_email", data.user_email);
-      router.push("/");
+      router.push("/dashboard");
     } catch {
       setError("Unable to connect to server");
     } finally {

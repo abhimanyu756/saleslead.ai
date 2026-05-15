@@ -14,7 +14,7 @@ function classificationBadge(c: string | null) {
   return "bg-slate-100 text-slate-400";
 }
 
-const defaultForm: LeadCreate = { name: "", phone: "", language_pref: "Hindi", source: "Google Ads" };
+const defaultForm: LeadCreate = { name: "", phone: "", email: "", language_pref: "Hindi", source: "Google Ads" };
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -183,7 +183,7 @@ export default function LeadsPage() {
           <>
             <Upload size={20} className="mx-auto text-slate-400 mb-2" />
             <p className="text-sm font-medium text-slate-700">Drop a CSV file to bulk import leads</p>
-            <p className="text-xs text-slate-400 mt-1">Columns: name, phone, language_pref, source</p>
+            <p className="text-xs text-slate-400 mt-1">Columns: name, phone, email, language_pref, source, broker_affiliation</p>
             <label className="mt-3 inline-block cursor-pointer text-xs text-indigo-600 hover:underline">
               or browse to upload
               <input type="file" accept=".csv" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleCsvUpload(e.target.files[0]); }} />
@@ -236,7 +236,10 @@ export default function LeadsPage() {
           <tbody className="divide-y divide-slate-50">
             {filtered.map((lead) => (
               <tr key={lead.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-4 py-3 font-medium text-slate-900">{lead.name}</td>
+                <td className="px-4 py-3">
+                  <p className="font-medium text-slate-900">{lead.name}</p>
+                  {lead.email && <p className="text-[11px] text-slate-400">{lead.email}</p>}
+                </td>
                 <td className="px-4 py-3 text-slate-500 font-mono text-xs">{lead.phone}</td>
                 <td className="px-4 py-3 text-slate-500">{lead.language_pref}</td>
                 <td className="px-4 py-3 text-slate-500">{lead.source ?? "—"}</td>
@@ -349,6 +352,12 @@ export default function LeadsPage() {
                 <label className="text-xs font-medium text-slate-700 block mb-1">Phone *</label>
                 <input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="9876543210"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-700 block mb-1">Email <span className="text-slate-400 font-normal">(optional — for sign-up link)</span></label>
+                <input type="email" value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="rajesh@example.com"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
               </div>
               <div className="grid grid-cols-2 gap-3">

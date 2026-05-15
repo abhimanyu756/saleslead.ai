@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { MessageCircle, CheckCircle, Clock, ExternalLink, ChevronDown, ChevronUp, Send, User, Phone, PhoneCall } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { MessageCircle, CheckCircle, Clock, ExternalLink, ChevronDown, ChevronUp, Send, User, Phone, PhoneCall, Mail, MailCheck, AlertCircle } from "lucide-react";
 import { api, Lead, Call } from "@/lib/api";
 import Link from "next/link";
+import { QueueFilters, DateRange, withinDateRange } from "@/components/QueueFilters";
 
 function timeSince(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -18,6 +19,37 @@ export default function WarmQueuePage() {
   const [items, setItems] = useState<WarmItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [calledIds, setCalledIds] = useState<Set<string>>(new Set());
+
+  const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [language, setLanguage] = useState<string>("all");
+  const [source, setSource] = useState<string>("all");
+  const [broker, setBroker] = useState<string>("all");
+
+  const availableLanguages = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.language_pref).filter(Boolean))).sort(),
+    [items]
+  );
+  const availableSources = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.source).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+  const availableBrokers = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.broker_affiliation).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    return items.filter(({ lead, call }) => {
+      if (!withinDateRange(call.started_at, dateRange)) return false;
+      if (language !== "all" && lead.language_pref !== language) return false;
+      if (source !== "all" && lead.source !== source) return false;
+      if (broker !== "all") {
+        if (broker === "__none__" && lead.broker_affiliation) return false;
+        if (broker !== "__none__" && lead.broker_affiliation !== broker) return false;
+      }
+      return true;
+    });
+  }, [items, dateRange, language, source, broker]);
 
   function handleCallLead(callId: string, leadName: string, phone: string, openingLine: string | null) {
     const opener = openingLine && openingLine !== "N/A" && openingLine !== "N/A — signed up."
@@ -48,9 +80,9 @@ export default function WarmQueuePage() {
     return () => clearInterval(id);
   }, []);
 
-  const waSent = items.filter((i) => i.call.whatsapp).length;
-  const waClicked = items.filter((i) => i.call.whatsapp?.clicked_at).length;
-  const waPending = items.filter((i) => i.call.whatsapp && !i.call.whatsapp.clicked_at).length;
+  const waSent = filteredItems.filter((i) => i.call.whatsapp).length;
+  const waClicked = filteredItems.filter((i) => i.call.whatsapp?.clicked_at).length;
+  const waPending = filteredItems.filter((i) => i.call.whatsapp && !i.call.whatsapp.clicked_at).length;
 
   return (
     <div className="p-6 space-y-5">
@@ -59,11 +91,23 @@ export default function WarmQueuePage() {
           <div className="flex items-center gap-2">
             <MessageCircle size={18} className="text-indigo-500" />
             <h1 className="text-xl font-bold text-slate-900">Warm Queue</h1>
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">{items.length} leads</span>
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">{filteredItems.length} leads</span>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">WhatsApp follow-up sent — awaiting sign-up or nurture</p>
         </div>
       </div>
+
+      <QueueFilters
+        dateRange={dateRange} setDateRange={setDateRange}
+        language={language} setLanguage={setLanguage}
+        source={source} setSource={setSource}
+        broker={broker} setBroker={setBroker}
+        availableLanguages={availableLanguages}
+        availableSources={availableSources}
+        availableBrokers={availableBrokers}
+        totalCount={items.length}
+        filteredCount={filteredItems.length}
+      />
 
       {/* Summary bar */}
       <div className="grid grid-cols-3 gap-4">
@@ -79,15 +123,15 @@ export default function WarmQueuePage() {
         ))}
       </div>
 
-      {items.length === 0 && (
+      {filteredItems.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
           <MessageCircle size={32} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">No warm leads yet. Complete a voice call to see data here.</p>
+          <p className="text-sm text-slate-500">{items.length === 0 ? "No warm leads yet. Complete a voice call to see data here." : "No leads match the current filters."}</p>
         </div>
       )}
 
       <div className="space-y-4">
-        {items.map(({ lead, call }) => {
+        {filteredItems.map(({ lead, call }) => {
           const wa = call.whatsapp;
           const isExpanded = expanded === call.id;
 
@@ -115,19 +159,38 @@ export default function WarmQueuePage() {
                     </div>
                     {wa ? (
                       wa.clicked_at ? (
-                        <span className="flex items-center gap-1.5 text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-medium">
-                          <CheckCircle size={11} /> Link Clicked
+                        <span className="flex items-center gap-1.5 text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-medium" title="WhatsApp link clicked">
+                          <CheckCircle size={11} /> WA Clicked
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-xs bg-indigo-100 text-indigo-600 px-3 py-1 rounded-full font-medium">
-                          <Send size={11} /> Sent {timeSince(wa.sent_at)}
+                        <span className="flex items-center gap-1.5 text-xs bg-indigo-100 text-indigo-600 px-3 py-1 rounded-full font-medium" title="WhatsApp sent">
+                          <Send size={11} /> WA {timeSince(wa.sent_at)}
                         </span>
                       )
                     ) : (
                       <span className="flex items-center gap-1.5 text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-medium">
-                        <Clock size={11} /> Pending
+                        <Clock size={11} /> WA Pending
                       </span>
                     )}
+                    {(() => {
+                      const em = call.email;
+                      if (!em) return null;
+                      if (em.error) return (
+                        <span className="flex items-center gap-1.5 text-xs bg-rose-50 text-rose-600 border border-rose-100 px-3 py-1 rounded-full font-medium" title={em.error}>
+                          <AlertCircle size={11} /> Email failed
+                        </span>
+                      );
+                      if (em.clicked_at) return (
+                        <span className="flex items-center gap-1.5 text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full font-medium" title="Email link clicked">
+                          <MailCheck size={11} /> Email Clicked
+                        </span>
+                      );
+                      return (
+                        <span className="flex items-center gap-1.5 text-xs bg-sky-100 text-sky-700 px-3 py-1 rounded-full font-medium" title="Email sent">
+                          <Mail size={11} /> Email Sent
+                        </span>
+                      );
+                    })()}
                     {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
                   </div>
                 </div>

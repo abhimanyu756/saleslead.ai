@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 
-const PUBLIC_PATHS = ["/login", "/register"];
+const PUBLIC_PATHS = ["/", "/login", "/register"];
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();

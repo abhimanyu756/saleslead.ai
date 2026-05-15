@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Snowflake, ChevronDown, ChevronUp, MessageCircle, User, Clock, RotateCw, Phone, X } from "lucide-react";
 import { api, Lead, Call } from "@/lib/api";
 import Link from "next/link";
+import { QueueFilters, DateRange, withinDateRange } from "@/components/QueueFilters";
 
 type ColdItem = { lead: Lead; call: Call };
 
@@ -42,6 +43,37 @@ export default function ColdQueuePage() {
   const [recalling, setRecalling] = useState(false);
   const [recallStatus, setRecallStatus] = useState<string | null>(null);
 
+  const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [language, setLanguage] = useState<string>("all");
+  const [source, setSource] = useState<string>("all");
+  const [broker, setBroker] = useState<string>("all");
+
+  const availableLanguages = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.language_pref).filter(Boolean))).sort(),
+    [items]
+  );
+  const availableSources = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.source).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+  const availableBrokers = useMemo(
+    () => Array.from(new Set(items.map((i) => i.lead.broker_affiliation).filter(Boolean) as string[])).sort(),
+    [items]
+  );
+
+  const filteredItems = useMemo(() => {
+    return items.filter(({ lead, call }) => {
+      if (!withinDateRange(call.started_at, dateRange)) return false;
+      if (language !== "all" && lead.language_pref !== language) return false;
+      if (source !== "all" && lead.source !== source) return false;
+      if (broker !== "all") {
+        if (broker === "__none__" && lead.broker_affiliation) return false;
+        if (broker !== "__none__" && lead.broker_affiliation !== broker) return false;
+      }
+      return true;
+    });
+  }, [items, dateRange, language, source, broker]);
+
   useEffect(() => {
     const load = () =>
       Promise.all([api.getLeads(), api.getCalls()])
@@ -71,7 +103,7 @@ export default function ColdQueuePage() {
   }
 
   function selectAll() {
-    setSelectedLeadIds(new Set(items.map((i) => i.lead.id)));
+    setSelectedLeadIds(new Set(filteredItems.map((i) => i.lead.id)));
   }
 
   function clearSelection() {
@@ -110,7 +142,7 @@ export default function ColdQueuePage() {
   }
 
   const selectedCount = selectedLeadIds.size;
-  const allSelected = items.length > 0 && selectedCount === items.length;
+  const allSelected = filteredItems.length > 0 && selectedCount >= filteredItems.length;
 
   return (
     <div className="p-6 space-y-5">
@@ -120,14 +152,14 @@ export default function ColdQueuePage() {
             <Snowflake size={18} className="text-slate-400" />
             <h1 className="text-xl font-bold text-slate-900">Cold Queue</h1>
             <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-semibold">
-              {items.length} leads
+              {filteredItems.length} leads
             </span>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
             Leads who hung up early or showed no interest. Re-engage after 30/60/90 days.
           </p>
         </div>
-        {items.length > 0 && (
+        {filteredItems.length > 0 && (
           <button
             onClick={allSelected ? clearSelection : selectAll}
             className="text-xs text-indigo-600 hover:underline font-medium"
@@ -136,6 +168,18 @@ export default function ColdQueuePage() {
           </button>
         )}
       </div>
+
+      <QueueFilters
+        dateRange={dateRange} setDateRange={setDateRange}
+        language={language} setLanguage={setLanguage}
+        source={source} setSource={setSource}
+        broker={broker} setBroker={setBroker}
+        availableLanguages={availableLanguages}
+        availableSources={availableSources}
+        availableBrokers={availableBrokers}
+        totalCount={items.length}
+        filteredCount={filteredItems.length}
+      />
 
       {/* Sticky action bar */}
       {selectedCount > 0 && (
@@ -166,15 +210,15 @@ export default function ColdQueuePage() {
         </div>
       )}
 
-      {items.length === 0 && (
+      {filteredItems.length === 0 && (
         <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
           <Snowflake size={32} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">No cold leads yet.</p>
+          <p className="text-sm text-slate-500">{items.length === 0 ? "No cold leads yet." : "No leads match the current filters."}</p>
         </div>
       )}
 
       <div className="space-y-3">
-        {items.map(({ lead, call }) => {
+        {filteredItems.map(({ lead, call }) => {
           const isExpanded = expanded === call.id;
           const reason = reasonFromCall(call);
           const turns = call.transcript?.length ?? 0;
