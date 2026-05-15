@@ -150,9 +150,8 @@ async def upload_csv(
     for lead in new_leads:
         await db.refresh(lead)
 
-    if new_leads:
-        background_tasks.add_task(_batch_call, new_leads)
-
+    # Calls are triggered separately by the frontend via /leads/batch-call
+    # to keep CSV upload non-blocking and avoid double-firing.
     return {"created": created, "skipped": skipped}
 
 

@@ -17,3 +17,10 @@ node_modules/
 
 # Claude internal
 .claude/
+
+#media files
+
+*.mp3
+*.mp4
+
+*.zip
